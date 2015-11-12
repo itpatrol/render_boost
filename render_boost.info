@@ -1,0 +1,7 @@
+name = Render Boost
+description = Cache render result and display it based on parameters checksum.
+package = Development
+backdrop = 1.x
+configure = admin/config/development/performance
+tags[] = developer
+type = module
