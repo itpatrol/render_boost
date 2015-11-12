@@ -1,40 +1,156 @@
 <?php
   
-/**
- * Implements hook_page_delivery_callback_alter().
- *
- * Enables the ability to display arbitrary pages as dialogs based on the
- * HTTP request header.
- */
-function render_boost_page_delivery_callback_alter(&$delivery_callback, $page_output) {
-  // For all ajax.js initiated requests, deliver as JSON.
-  if (backdrop_is_ajax()) {
-    $delivery_callback = 'ajax_deliver';
-  }
-  // For links with the data-dialog attribute, deliver as dialog JSON.
-  elseif (backdrop_is_dialog()) {
-    $delivery_callback = 'ajax_deliver_dialog';
-  }
-  // If the page response is a set of AJAX commands, deliver as JSON.
-  elseif (isset($page_output['#type']) && $page_output['#type'] === 'ajax') {
-    $delivery_callback = 'ajax_deliver';
-  }
-  $delivery_callback = 'render_boost_delivery';
+
+function render_boost_checksum($element){
+//  $str = var_export($element,true);
+  $str = serialize($element);
+  return md5($str);
 }
 
-/**
- * Packages and sends the result of a page callback to the browser as HTML.
- *
- * @param $page_callback_result
- *   The result of a page callback. Can be one of:
- *   - NULL: to indicate no content.
- *   - An integer menu status constant: to indicate an error condition.
- *   - A string of HTML content.
- *   - A renderable array of content.
- *
- * @see backdrop_deliver_page()
- */
-function render_boost_delivery($page_callback_result) {
-  print_r($page_callback_result);
-  backdrop_deliver_html_page($page_callback_result);
+function render_boost_store_cache($checksum, $output){
+  if(empty($output)){
+    // do not cache empty
+    return;
+  }
+  // Construct the filepath where JS translation files are stored.
+  $dir = 'private://' . settings_get('render_boost_cache_dir', 'render_boost');
+  $dest = $dir . '/' . $checksum . '.html';
+  file_prepare_directory($dir, FILE_CREATE_DIRECTORY);
+  file_unmanaged_save_data($output, $dest);
+}
+
+function render_boost_get_cache($checksum, $elements){
+  
+  
+  $dir = 'private://' . settings_get('render_boost_cache_dir', 'render_boost');
+  
+  $dest = $dir . '/' . $checksum . '.html';
+
+  if(file_exists($dest)){
+
+    if (!empty($elements['#attached'])) {
+      backdrop_process_attached($elements);
+    }
+
+    return file_get_contents($dest);
+  }
+  return FALSE;
+}
+
+function render_boost_backdrop_render(&$elements) {
+
+  // Early-return nothing if user does not have access.
+  if (empty($elements) || (isset($elements['#access']) && !$elements['#access'])) {
+    return '';
+  }
+
+  // Do not print elements twice.
+  if (!empty($elements['#printed'])) {
+    return '';
+  }
+  
+  $check_sum = render_boost_checksum($elements);
+  if($cached_output = render_boost_get_cache($check_sum, $elements)){
+    return $cached_output;
+  }
+  $elements['#attributes']['cache-checksum'] =  $check_sum;
+  $elements['#attributes']['cache-time'] = time();
+
+  // Try to fetch the element's markup from cache and return.
+  if (isset($elements['#cache'])) {
+    $cached_output = backdrop_render_cache_get($elements);
+    if ($cached_output !== FALSE) {
+      return $cached_output;
+    }
+  }
+
+  // If #markup is set, ensure #type is set. This allows to specify just #markup
+  // on an element without setting #type.
+  if (isset($elements['#markup']) && !isset($elements['#type'])) {
+    $elements['#type'] = 'markup';
+  }
+
+  // If the default values for this element have not been loaded yet, populate
+  // them.
+  if (isset($elements['#type']) && empty($elements['#defaults_loaded'])) {
+    $elements += element_info($elements['#type']);
+  }
+
+  // Make any final changes to the element before it is rendered. This means
+  // that the $element or the children can be altered or corrected before the
+  // element is rendered into the final text.
+  if (isset($elements['#pre_render'])) {
+    foreach ($elements['#pre_render'] as $function) {
+      $elements = $function($elements);
+    }
+  }
+
+  // Allow #pre_render to abort rendering.
+  if (!empty($elements['#printed'])) {
+    return '';
+  }
+
+  // Get the children of the element, sorted by weight.
+  $children = element_children($elements, TRUE);
+
+  // Initialize this element's #children, unless a #pre_render callback already
+  // preset #children.
+  if (!isset($elements['#children'])) {
+    $elements['#children'] = '';
+  }
+  // Call the element's #theme function if it is set. Then any children of the
+  // element have to be rendered there.
+  if (isset($elements['#theme'])) {
+    $elements['#children'] = theme($elements['#theme'], $elements);
+  }
+  // If #theme was not set and the element has children, render them now.
+  // This is the same process as backdrop_render_children() but is inlined
+  // for speed.
+  if ($elements['#children'] == '') {
+    foreach ($children as $key) {
+      $elements['#children'] .= backdrop_render($elements[$key]);
+    }
+  }
+
+  // Let the theme functions in #theme_wrappers add markup around the rendered
+  // children.
+  if (isset($elements['#theme_wrappers'])) {
+    foreach ($elements['#theme_wrappers'] as $theme_wrapper) {
+      $elements['#children'] = theme($theme_wrapper, $elements);
+    }
+  }
+
+  // Filter the outputted content and make any last changes before the
+  // content is sent to the browser. The changes are made on $content
+  // which allows the output'ed text to be filtered.
+  if (isset($elements['#post_render'])) {
+    foreach ($elements['#post_render'] as $function) {
+      $elements['#children'] = $function($elements['#children'], $elements);
+    }
+  }
+
+  // Add any JavaScript state information associated with the element.
+  if (!empty($elements['#states'])) {
+    backdrop_process_states($elements);
+  }
+
+  // Add additional libraries, CSS, JavaScript an other custom
+  // attached data associated with this element.
+  if (!empty($elements['#attached'])) {
+    backdrop_process_attached($elements);
+  }
+
+  $prefix = isset($elements['#prefix']) ? $elements['#prefix'] : '';
+  $suffix = isset($elements['#suffix']) ? $elements['#suffix'] : '';
+  $output = $prefix . $elements['#children'] . $suffix;
+
+  // Cache the processed element if #cache is set.
+  if (isset($elements['#cache'])) {
+    backdrop_render_cache_set($output, $elements);
+  }
+  
+  render_boost_store_cache($check_sum, $output);
+
+  $elements['#printed'] = TRUE;
+  return $output;
 }
