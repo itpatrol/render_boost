@@ -1,0 +1,40 @@
+<?php
+  
+/**
+ * Implements hook_page_delivery_callback_alter().
+ *
+ * Enables the ability to display arbitrary pages as dialogs based on the
+ * HTTP request header.
+ */
+function render_boost_page_delivery_callback_alter(&$delivery_callback, $page_output) {
+  // For all ajax.js initiated requests, deliver as JSON.
+  if (backdrop_is_ajax()) {
+    $delivery_callback = 'ajax_deliver';
+  }
+  // For links with the data-dialog attribute, deliver as dialog JSON.
+  elseif (backdrop_is_dialog()) {
+    $delivery_callback = 'ajax_deliver_dialog';
+  }
+  // If the page response is a set of AJAX commands, deliver as JSON.
+  elseif (isset($page_output['#type']) && $page_output['#type'] === 'ajax') {
+    $delivery_callback = 'ajax_deliver';
+  }
+  $delivery_callback = 'render_boost_delivery';
+}
+
+/**
+ * Packages and sends the result of a page callback to the browser as HTML.
+ *
+ * @param $page_callback_result
+ *   The result of a page callback. Can be one of:
+ *   - NULL: to indicate no content.
+ *   - An integer menu status constant: to indicate an error condition.
+ *   - A string of HTML content.
+ *   - A renderable array of content.
+ *
+ * @see backdrop_deliver_page()
+ */
+function render_boost_delivery($page_callback_result) {
+  print_r($page_callback_result);
+  backdrop_deliver_html_page($page_callback_result);
+}
