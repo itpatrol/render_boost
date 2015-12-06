@@ -1,45 +1,31 @@
 <?php
-  
 
-function render_boost_checksum($element){
-//  $str = var_export($element,true);
-  $str = serialize($element);
-  return md5($str);
+function render_boost_form_system_performance_settings_alter(&$form, &$form_state, $form_id) {
+  $config = config('render_boost.settings');
+
+  $form['render_boost'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Render boost'),
+    '#tree' => TRUE,
+  );
+
+  $form['render_boost']['enable'] = array(
+    '#type' => 'checkbox',
+    '#title' => t("Enable render boost."),
+    '#default_value' => $config->get('enable'),
+  );
+
+  $form['#submit'][] = 'render_boost_system_settings_submit';  
 }
 
-function render_boost_store_cache($checksum, $output){
-  if(empty($output)){
-    // do not cache empty
-    return;
-  }
-  // Construct the filepath where JS translation files are stored.
-  $dir = 'private://' . settings_get('render_boost_cache_dir', 'render_boost');
-  $dest = $dir . '/' . $checksum . '.html';
-  file_prepare_directory($dir, FILE_CREATE_DIRECTORY);
-  file_unmanaged_save_data($output, $dest);
+function render_boost_system_settings_submit($form, &$form_state) {
+  $config = config('render_boost.settings');
+  $config->set('enable', $form_state['values']['render_boost']['enable']);
+  $config->save();
 }
 
-function render_boost_get_cache($checksum, $elements){
-  
-  
-  $dir = 'private://' . settings_get('render_boost_cache_dir', 'render_boost');
-  
-  $dest = $dir . '/' . $checksum . '.html';
-
-  if(file_exists($dest)){
-
-    if (!empty($elements['#attached'])) {
-      backdrop_process_attached($elements);
-    }
-
-    return file_get_contents($dest);
-  }
-  return FALSE;
-}
-
-function render_boost_backdrop_render(&$elements) {
-
-  // Early-return nothing if user does not have access.
+function render_boost_original_render(&$elements) {
+    // Early-return nothing if user does not have access.
   if (empty($elements) || (isset($elements['#access']) && !$elements['#access'])) {
     return '';
   }
@@ -47,21 +33,6 @@ function render_boost_backdrop_render(&$elements) {
   // Do not print elements twice.
   if (!empty($elements['#printed'])) {
     return '';
-  }
-  
-  $check_sum = render_boost_checksum($elements);
-  if($cached_output = render_boost_get_cache($check_sum, $elements)){
-    return $cached_output;
-  }
-  $elements['#attributes']['cache-checksum'] =  $check_sum;
-  $elements['#attributes']['cache-time'] = time();
-
-  // Try to fetch the element's markup from cache and return.
-  if (isset($elements['#cache'])) {
-    $cached_output = backdrop_render_cache_get($elements);
-    if ($cached_output !== FALSE) {
-      return $cached_output;
-    }
   }
 
   // If #markup is set, ensure #type is set. This allows to specify just #markup
@@ -148,8 +119,6 @@ function render_boost_backdrop_render(&$elements) {
   if (isset($elements['#cache'])) {
     backdrop_render_cache_set($output, $elements);
   }
-  
-  render_boost_store_cache($check_sum, $output);
 
   $elements['#printed'] = TRUE;
   return $output;

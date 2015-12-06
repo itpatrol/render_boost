@@ -1,0 +1,15 @@
+<?php
+  
+/**
+ * Implements hook_enable().
+ */
+function render_boots_enable() {
+//  config_set('system.core', 'menu_route_handler', 'layout_route_handler');
+}
+
+/**
+ * Implements hook_disable().
+ */
+function render_boots_disable() {
+//  config_set('system.core', 'menu_route_handler', NULL);
+}
