@@ -1,5 +1,394 @@
 <?php
 
+/**
+ * Implementation of hook_boot(). Runs even for cached pages.
+ */
+function render_boost_boot() {  
+  backdrop_register_shutdown_function('render_boost_shutdown');
+}
+
+function microtime_float()
+{
+    list($usec, $sec) = explode(" ", microtime());
+    return ((float)$usec + (float)$sec);
+}
+
+function render_boost_shutdown() {
+
+  global $render_boost_count;
+  global $render_boost_count_checksum;
+  global $render_boost_count_store;
+  global $render_boost_count_get;
+  global $render_boost_store_ids;
+  print "Render boost called: ". $render_boost_count . "\n<br>
+  checksum: " . round($render_boost_count_checksum *1000). "ms\n<br>
+  store: " . round($render_boost_count_store *1000). "ms\n<br>
+  get: " . round($render_boost_count_get*1000). "ms\n<br>
+  <pre>" . print_r($render_boost_store_ids,true)."</pre>
+  ";
+//  print "Render boost called: ". $render_boost_count ."\n<br>";
+  
+}
+
+function render_boost_checksum($element){
+  if(empty($element)){
+    return FALSE;
+  }
+
+  global $render_boost_count;
+  global $render_boost_count_checksum;
+  $now = microtime_float();
+  $render_boost_count++;
+  
+  //$element_copy = $element;
+  
+  if(is_array($element) || is_object($element)){
+  /*  $element_copy =  json_encode($element);
+    $search_for =  array('form_token', 'form_build_id', '#build_id');
+    $need_sanitize = FALSE;
+    foreach($search_for as $str){
+      if(FALSE !==  strpos($element_copy, $str)){
+        $need_sanitize = TRUE;
+        break;
+      }
+    }
+    
+    if($need_sanitize){
+      $element_copy = render_boost_prepare_elements_for_md5(json_decode($element_copy, TRUE));
+    }else{
+      $element_copy = json_decode($element_copy, TRUE);
+    }
+    
+    $element_copy = json_decode(json_encode($element), TRUE);
+    */
+    $element_copy = render_boost_prepare_elements_for_md5($element, TRUE));
+  }else{
+//    backdrop_set_message("Not an array");
+    $element_copy = $element;
+  }
+  */
+  /*
+  if(md5(serialize($element_copy)) !== md5(serialize($element))){
+//      backdrop_set_message( " For MD5 cache <pre>|" . htmlspecialchars(print_r($element_copy,true) . "|\n DIFF |\n". print_r($element,true)) .  "|</pre>");
+  }else{
+//    backdrop_set_message( " no changes! <pre>|" . htmlspecialchars(print_r($element_copy,true)) .  "|</pre>");
+
+  }*/
+  
+  $str = md5(serialize($element_copy));
+  $render_boost_count_checksum = $render_boost_count_checksum + (microtime_float() - $now);
+  return $str;
+}
+
+function render_boost_prepare_elements_for_md5($elements){
+  static $deep; 
+    
+  $return  = '';
+  if(is_array($elements)){
+    if(isset($elements['form_token'])){
+      unset($elements['form_token']);
+    }
+    if(isset($elements['form_build_id'])){
+      unset($elements['form_build_id']);
+    }
+    if(isset($elements['#build_id'])){
+      unset($elements['#build_id']);
+    }
+    $return = array();
+  }
+  
+  if(is_object($elements)){
+    $return = new stdClass();
+  }
+  
+  if($deep >0 ){
+    $deep ++;
+  }else{
+    $deep = 1;
+  }
+
+//  backdrop_set_message( " Deep " . $deep . "<pre> " .htmlspecialchars( print_r($elements,true)). " </pre>");
+
+
+  foreach($elements as $key => $element){
+    
+    if(is_string($key) && (in_array($key, array('form_token', 'form_build_id', '#build_id')))){
+    }else{
+      if(is_array($element)){
+        $return[$key] = render_boost_prepare_elements_for_md5($element);
+      }elseif(is_object($elements)){
+        $return->{$key} = render_boost_prepare_elements_for_md5($element);
+      }elseif(is_string($element)){
+        if(!in_array($element, array('form_token', 'form_build_id', '#build_id'))){
+          if(is_array($return)){
+            $return[$key] = $element;
+          }
+          if(is_object($return)){
+            $return->{$key} = $element;
+          }
+        }
+      }elseif(is_numeric($element)){
+        if(is_array($return)){
+          $return[$key] = $element;
+        }
+        if(is_object($return)){
+          $return->{$key} = $element;
+        }
+      }elseif(is_bool($element)){
+        if(is_array($return)){
+          $return[$key] = $element;
+        }
+        if(is_object($return)){
+          $return->{$key} = $element;
+        }
+      }elseif(empty($element)){
+      }else{
+        if(is_array($return)){
+          backdrop_set_message( " Deep " . $deep . "<pre> " . print_r((array)$element,true). " </pre>"); 
+          $return[$key] = render_boost_prepare_elements_for_md5((array)$element);
+        }elseif(is_object($return)){
+          backdrop_set_message( " Deep " . $deep . "<pre> " . print_r((array)$element,true). " </pre>"); 
+          $return->{$key} = render_boost_prepare_elements_for_md5((array)$element);
+        }
+        
+        /*
+        $tmp_element = $element;
+        $class_name = get_class($element);
+        if(FALSE !== $class_name){
+          
+          if($class_name == 'Node'){
+            $tmp_element = array(
+              'nid' => $element->nid,
+              'vid' => $element->vid,
+              'changed' => $element->changed,
+              'created' => $element->created,
+              'langcode' => $element->langcode,
+            );
+          }else{
+            backdrop_set_message('Element => <pre>'. htmlspecialchars(print_r($element,true)) . print_r(get_object_vars($element), true) . '</pre>');
+          }
+        }else{
+          backdrop_set_message('Element => <pre>'. htmlspecialchars(print_r($element,true)) . '</pre>');
+        }
+        if(is_array($return)){
+          $return[$key] = $tmp_element;
+        }
+        if(is_object($return)){
+          $return->{$key} = $tmp_element;
+        }*/
+      }
+    }
+  }
+  $deep --;
+  
+//  backdrop_set_message('elements: <pre>' . htmlspecialchars(print_r($return,true)) . '</pre>');
+
+  return $return;
+}
+
+
+function render_boost_store_cache($checksum, $data){
+  if(empty($data)){
+    // do not cache empty
+    return;
+  }
+  global $render_boost_store_ids;
+//  $render_boost_store_ids[] = $elements;
+  global $render_boost_count_store;
+  $now = microtime_float();
+  // Construct the filepath where JS translation files are stored.
+//  $dir = '/www/bd1.2/files_private/render_boost/' ; //'private://' . settings_get('render_boost_cache_dir', 'render_boost');
+//  $dest = $dir . '/' . $checksum . '.html';
+//  file_prepare_directory($dir, FILE_CREATE_DIRECTORY);
+//  file_unmanaged_save_data($output, $dest);
+  $bin = 'cache';
+  $cid = $checksum;
+  $expire = time() + 3600;
+  cache($bin)->set($cid, $data, $expire);
+  $render_boost_count_store = $render_boost_count_store + (microtime_float() - $now);
+}
+
+function render_boost_get_render_cache($checksum, $elements){
+  $return = FALSE;
+  if($cache_data = render_boost_get_cache($checksum)){
+    foreach($cache_data as $key => $value){
+      if($value['#cached']){
+        $return .= $value['#data'];
+      }else{
+        backdrop_render($elements[$key]);
+      }
+    }
+  }
+
+  return $return;
+}
+
+function render_boost_set_render_cache($checksum, $cached ,$elements){
+
+}
+
+function render_boost_get_cache($checksum){
+  
+  global $render_boost_count_get;
+  $now = microtime_float();
+/*  $dir = '/www/bd1.2/files_private/render_boost/' ; //$dir = 'private://' . settings_get('render_boost_cache_dir', 'render_boost');
+  
+  $dest = $dir . '/' . $checksum . '.html';
+
+  $source = file_get_contents($dest);
+  if(FALSE !== $source){
+
+    if (!empty($elements['#attached'])) {
+      backdrop_process_attached($elements);
+    }
+    $render_boost_count_get = $render_boost_count_get + (microtime_float() - $now);
+    return $source;
+  }
+  */
+  $return = FALSE;
+  $cid = $checksum;
+  $bin='cache';
+  if($cache = cache($bin)->get($cid)){
+
+    $return = $cache->data; 
+  }
+  $render_boost_count_get = $render_boost_count_get + (microtime_float() - $now);
+  return $return;
+}
+
+function render_boost_backdrop_layout_renderBlock($block) {
+  $config = config('render_boost.settings');
+  if($config->get('enable')){
+    $check_sum = render_boost_checksum($block);
+    if($cached_output = render_boost_get_cache($check_sum, $block)){
+      return $cached_output;
+    }
+  }
+  return FALSE;
+}
+
+function render_boost_get_cached_data($elements, $check_sum){
+    // Early-return nothing if user does not have access.
+  if (empty($elements) || (isset($elements['#access']) && !$elements['#access'])) {
+    return '';
+  }
+
+  // Do not print elements twice.
+  if (!empty($elements['#printed'])) {
+    return '';
+  }
+
+  if($cache_data = render_boost_get_cache($check_sum)){
+    if (!empty($elements['#states'])) {
+      backdrop_process_states($elements);
+    }
+
+    if (!empty($elements['#attached'])) {
+      backdrop_process_attached($elements);
+    }
+    return $cache_data;
+  }
+  return FALSE;
+}
+
+function render_boost_backdrop_render(&$elements) {
+  $empty_array = array(
+    '#printed' => FALSE,
+  );
+  
+  if($elements === $empty_array){
+    return "";
+  }
+
+  if($check_sum = render_boost_checksum($elements)){
+  
+    if(!$output = render_boost_get_cached_data($elements, $check_sum)){
+//      backdrop_set_message( " Check element <pre>" . htmlspecialchars(print_r($elements,true)). "</pre>");
+      $output = render_boost_render_wrapper($elements);
+  
+      backdrop_set_message( " No cache " . $check_sum . " . <pre>" . print_r($elements,true) . htmlspecialchars($output). "</pre>");
+      if(!empty($output)){
+        render_boost_store_cache($check_sum, $output);
+      }
+    }
+  } else{
+    $output = render_boost_render_wrapper($elements);
+  }
+  
+  render_boost_replace_dynamic_content($elements,$output);
+  
+//  backdrop_set_message("<pre>" . $checksum . ' ' . htmlspecialchars($output) . "</pre>");
+  return $output;
+}
+
+function render_boost_replace_dynamic_content($elements, &$output){
+
+  preg_match_all('/<!-- REPLACE: (.*?) --\>/', $output, $matches); 
+
+  if(!empty($matches[0])){
+
+    foreach($matches[1] as $key => $name){
+      if($element = render_boost_get_form_element($name, $elements)){
+        if (!empty($element['#printed'])) {
+          $rendered_element = $element['#children'];
+        }else{
+          $rendered_element = render_boost_original_render($element);
+        }
+        $output = str_replace($matches[0][$key], $rendered_element, $output);
+      }
+    }
+  }
+}
+
+function render_boost_get_form_element($name, $elements){
+  if(isset($elements['#type']) && $elements['#type'] == 'form'){
+    if(isset($elements[$name])){
+      return $elements[$name];
+    }
+  } else {
+    foreach($elements as $variable => $element){
+      if(is_array($element) && isset($element[$name])){
+        return $element[$name];
+      }
+    }
+  }
+}
+
+function render_boost_set_array_cache($render_cache, $elements){
+  $keys = array_keys($render_cache);
+//  echo "test2";
+//  print_r($render_cache);
+//  print_r($elements);
+  if(isset($elements['#type'])){
+    $keys = array(
+      '#type' => $elements['#type'],
+      '#keys' => $keys,
+    );
+  }
+//  print_r($keys);
+  $checksum = render_boost_checksum($keys);
+//  echo $checksum;
+  render_boost_store_cache($checksum, $render_cache);
+}
+
+function render_boost_get_array_cache($elements, $children){
+  if($children){
+//    echo "children";
+//    print_r($children);
+    if(isset($elements['#type'])){
+      $children = array(
+        '#type' => $elements['#type'],
+        '#keys' => $children,
+      );
+    }
+    $checksum = render_boost_checksum($children);
+//    echo $checksum;  
+    return render_boost_get_cache($checksum);
+
+  }
+  return FALSE;
+}
+
 function render_boost_form_system_performance_settings_alter(&$form, &$form_state, $form_id) {
   $config = config('render_boost.settings');
 
@@ -24,7 +413,24 @@ function render_boost_system_settings_submit($form, &$form_state) {
   $config->save();
 }
 
-function render_boost_original_render(&$elements) {
+function render_boost_render_wrapper(&$elements) {
+  
+  $dynamic_content = FALSE;
+  if(isset($elements['#name']) && in_array($elements['#name'], array('form_token', 'form_build_id'))){
+    //backdrop_set_message("<pre>" . $checksum . ' ' . htmlspecialchars(print_r($elements,true)) . "</pre>");
+    $dynamic_content = TRUE;
+  
+  }
+  
+  $output = render_boost_original_render($elements);
+  
+  if($dynamic_content) {
+    $output = '<!-- REPLACE: ' . $elements['#name'] . ' -->';
+  }
+  return $output;    
+}
+
+function render_boost_original_render(&$elements) {  
     // Early-return nothing if user does not have access.
   if (empty($elements) || (isset($elements['#access']) && !$elements['#access'])) {
     return '';
@@ -79,7 +485,7 @@ function render_boost_original_render(&$elements) {
   // for speed.
   if ($elements['#children'] == '') {
     foreach ($children as $key) {
-      $elements['#children'] .= backdrop_render($elements[$key]);
+      $elements['#children'] .= render_boost_render_wrapper($elements[$key]);
     }
   }
 
@@ -121,5 +527,6 @@ function render_boost_original_render(&$elements) {
   }
 
   $elements['#printed'] = TRUE;
+
   return $output;
 }
