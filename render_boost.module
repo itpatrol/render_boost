@@ -20,10 +20,12 @@ function render_boost_shutdown() {
   global $render_boost_count_store;
   global $render_boost_count_get;
   global $render_boost_store_ids;
+  global $render_boost_count_md5;
   print "Render boost called: ". $render_boost_count . "\n<br>
   checksum: " . round($render_boost_count_checksum *1000). "ms\n<br>
   store: " . round($render_boost_count_store *1000). "ms\n<br>
   get: " . round($render_boost_count_get*1000). "ms\n<br>
+  md5: " . round($render_boost_count_md5*1000). "ms\n<br>
   <pre>" . print_r($render_boost_store_ids,true)."</pre>
   ";
 //  print "Render boost called: ". $render_boost_count ."\n<br>";
@@ -41,48 +43,33 @@ function render_boost_checksum($element){
   $render_boost_count++;
   
   //$element_copy = $element;
+  $serialize = serialize($element);
   
   if(is_array($element) || is_object($element)){
-  /*  $element_copy =  json_encode($element);
-    $search_for =  array('form_token', 'form_build_id', '#build_id');
     $need_sanitize = FALSE;
+    $search_for =  array('form_token', 'form_build_id', '#build_id');
     foreach($search_for as $str){
-      if(FALSE !==  strpos($element_copy, $str)){
+      if(FALSE !==  strpos($serialize, $str)){
         $need_sanitize = TRUE;
         break;
       }
     }
-    
     if($need_sanitize){
-      $element_copy = render_boost_prepare_elements_for_md5(json_decode($element_copy, TRUE));
-    }else{
-      $element_copy = json_decode($element_copy, TRUE);
+      $element_copy = render_boost_prepare_elements_for_md5($element);
+      $serialize = serialize($element_copy);
     }
-    
-    $element_copy = json_decode(json_encode($element), TRUE);
-    */
-    $element_copy = render_boost_prepare_elements_for_md5($element, TRUE));
-  }else{
-//    backdrop_set_message("Not an array");
-    $element_copy = $element;
   }
-  */
-  /*
-  if(md5(serialize($element_copy)) !== md5(serialize($element))){
-//      backdrop_set_message( " For MD5 cache <pre>|" . htmlspecialchars(print_r($element_copy,true) . "|\n DIFF |\n". print_r($element,true)) .  "|</pre>");
-  }else{
-//    backdrop_set_message( " no changes! <pre>|" . htmlspecialchars(print_r($element_copy,true)) .  "|</pre>");
-
-  }*/
   
-  $str = md5(serialize($element_copy));
+  $str = md5($serialize);
   $render_boost_count_checksum = $render_boost_count_checksum + (microtime_float() - $now);
   return $str;
 }
 
 function render_boost_prepare_elements_for_md5($elements){
   static $deep; 
-    
+  global $render_boost_count_md5;
+  
+
   $return  = '';
   if(is_array($elements)){
     if(isset($elements['form_token'])){
@@ -99,6 +86,16 @@ function render_boost_prepare_elements_for_md5($elements){
   
   if(is_object($elements)){
     $return = new stdClass();
+    if(isset($elements->form_token)){
+      unset($elements->form_token);
+    }
+    if(isset($elements->form_build_id)){
+      unset($elements->form_build_id);
+    }
+    if(isset($elements->{'#build_id'})){
+      unset($elements->{'#build_id'});
+    }
+
   }
   
   if($deep >0 ){
@@ -109,83 +106,68 @@ function render_boost_prepare_elements_for_md5($elements){
 
 //  backdrop_set_message( " Deep " . $deep . "<pre> " .htmlspecialchars( print_r($elements,true)). " </pre>");
 
-
+  $now = microtime_float();
   foreach($elements as $key => $element){
-    
-    if(is_string($key) && (in_array($key, array('form_token', 'form_build_id', '#build_id')))){
-    }else{
-      if(is_array($element)){
+    if(is_string($element)){
+      if(0 !== strcmp($element,'form_token')
+        && 0 !== strcmp($element,'form_build_id')
+        && 0 !== strcmp($element,'#build_id')
+      ){
+        if(is_array($return)){
+          $return[$key] = $element;
+        }
+        if(is_object($return)){
+          $return->{$key} = $element;
+        }
+      }
+    }elseif(is_array($element)){
+//        backdrop_set_message( " Deep " . $deep . "<pre> " . htmlspecialchars(print_r((array)$element,true)). " </pre>"); 
+      if(is_array($return)){
+//      
         $return[$key] = render_boost_prepare_elements_for_md5($element);
-      }elseif(is_object($elements)){
+      }
+      if(is_object($return)){
         $return->{$key} = render_boost_prepare_elements_for_md5($element);
-      }elseif(is_string($element)){
-        if(!in_array($element, array('form_token', 'form_build_id', '#build_id'))){
-          if(is_array($return)){
-            $return[$key] = $element;
-          }
-          if(is_object($return)){
-            $return->{$key} = $element;
-          }
-        }
-      }elseif(is_numeric($element)){
-        if(is_array($return)){
-          $return[$key] = $element;
-        }
-        if(is_object($return)){
-          $return->{$key} = $element;
-        }
-      }elseif(is_bool($element)){
-        if(is_array($return)){
-          $return[$key] = $element;
-        }
-        if(is_object($return)){
-          $return->{$key} = $element;
-        }
-      }elseif(empty($element)){
-      }else{
-        if(is_array($return)){
-          backdrop_set_message( " Deep " . $deep . "<pre> " . print_r((array)$element,true). " </pre>"); 
-          $return[$key] = render_boost_prepare_elements_for_md5((array)$element);
-        }elseif(is_object($return)){
-          backdrop_set_message( " Deep " . $deep . "<pre> " . print_r((array)$element,true). " </pre>"); 
-          $return->{$key} = render_boost_prepare_elements_for_md5((array)$element);
-        }
-        
-        /*
-        $tmp_element = $element;
-        $class_name = get_class($element);
-        if(FALSE !== $class_name){
-          
-          if($class_name == 'Node'){
-            $tmp_element = array(
-              'nid' => $element->nid,
-              'vid' => $element->vid,
-              'changed' => $element->changed,
-              'created' => $element->created,
-              'langcode' => $element->langcode,
-            );
-          }else{
-            backdrop_set_message('Element => <pre>'. htmlspecialchars(print_r($element,true)) . print_r(get_object_vars($element), true) . '</pre>');
-          }
-        }else{
-          backdrop_set_message('Element => <pre>'. htmlspecialchars(print_r($element,true)) . '</pre>');
-        }
-        if(is_array($return)){
-          $return[$key] = $tmp_element;
-        }
-        if(is_object($return)){
-          $return->{$key} = $tmp_element;
-        }*/
+      }      
+    }elseif(is_object($element)){
+      if(is_array($return)){
+        $return[$key] = render_boost_get_object_values($element);
+      }
+      if(is_object($return)){
+        $return->{$key} = render_boost_get_object_values($element);
+      }
+    }else{
+      if(is_array($return)){
+        $return[$key] = $element;
+      }
+      if(is_object($return)){
+        $return->{$key} = $element;
       }
     }
   }
+  
+  if($deep == 1){
+    $render_boost_count_md5 = $render_boost_count_md5 + (microtime_float() - $now);
+  }
+  
   $deep --;
+  
+  
   
 //  backdrop_set_message('elements: <pre>' . htmlspecialchars(print_r($return,true)) . '</pre>');
 
   return $return;
 }
 
+function render_boost_get_object_values($object){
+  $result = array();
+  foreach($object as $key => $val){
+    if(is_string($val) || is_bool($val) || is_numeric($val)){
+      $result[$key] = $val;
+    }
+  }
+  return $result;
+}
 
 function render_boost_store_cache($checksum, $data){
   if(empty($data)){
@@ -208,29 +190,18 @@ function render_boost_store_cache($checksum, $data){
   $render_boost_count_store = $render_boost_count_store + (microtime_float() - $now);
 }
 
-function render_boost_get_render_cache($checksum, $elements){
-  $return = FALSE;
-  if($cache_data = render_boost_get_cache($checksum)){
-    foreach($cache_data as $key => $value){
-      if($value['#cached']){
-        $return .= $value['#data'];
-      }else{
-        backdrop_render($elements[$key]);
-      }
-    }
-  }
-
-  return $return;
-}
-
-function render_boost_set_render_cache($checksum, $cached ,$elements){
-
-}
 
 function render_boost_get_cache($checksum){
   
   global $render_boost_count_get;
   $now = microtime_float();
+
+  static $checksums;
+  
+  if(isset($checksums[$checksum])){
+    return $checksums[$checksum];
+  }
+  
 /*  $dir = '/www/bd1.2/files_private/render_boost/' ; //$dir = 'private://' . settings_get('render_boost_cache_dir', 'render_boost');
   
   $dest = $dir . '/' . $checksum . '.html';
@@ -249,22 +220,12 @@ function render_boost_get_cache($checksum){
   $cid = $checksum;
   $bin='cache';
   if($cache = cache($bin)->get($cid)){
-
     $return = $cache->data; 
+//    $checksums[$checksum] = $return;
   }
   $render_boost_count_get = $render_boost_count_get + (microtime_float() - $now);
+  
   return $return;
-}
-
-function render_boost_backdrop_layout_renderBlock($block) {
-  $config = config('render_boost.settings');
-  if($config->get('enable')){
-    $check_sum = render_boost_checksum($block);
-    if($cached_output = render_boost_get_cache($check_sum, $block)){
-      return $cached_output;
-    }
-  }
-  return FALSE;
 }
 
 function render_boost_get_cached_data($elements, $check_sum){
@@ -306,8 +267,9 @@ function render_boost_backdrop_render(&$elements) {
 //      backdrop_set_message( " Check element <pre>" . htmlspecialchars(print_r($elements,true)). "</pre>");
       $output = render_boost_render_wrapper($elements);
   
-      backdrop_set_message( " No cache " . $check_sum . " . <pre>" . print_r($elements,true) . htmlspecialchars($output). "</pre>");
+//
       if(!empty($output)){
+//              backdrop_set_message( " No cache " . $check_sum . " . <pre>" . htmlspecialchars(print_r($elements,true)) . htmlspecialchars($output). "</pre>");
         render_boost_store_cache($check_sum, $output);
       }
     }
@@ -354,40 +316,6 @@ function render_boost_get_form_element($name, $elements){
   }
 }
 
-function render_boost_set_array_cache($render_cache, $elements){
-  $keys = array_keys($render_cache);
-//  echo "test2";
-//  print_r($render_cache);
-//  print_r($elements);
-  if(isset($elements['#type'])){
-    $keys = array(
-      '#type' => $elements['#type'],
-      '#keys' => $keys,
-    );
-  }
-//  print_r($keys);
-  $checksum = render_boost_checksum($keys);
-//  echo $checksum;
-  render_boost_store_cache($checksum, $render_cache);
-}
-
-function render_boost_get_array_cache($elements, $children){
-  if($children){
-//    echo "children";
-//    print_r($children);
-    if(isset($elements['#type'])){
-      $children = array(
-        '#type' => $elements['#type'],
-        '#keys' => $children,
-      );
-    }
-    $checksum = render_boost_checksum($children);
-//    echo $checksum;  
-    return render_boost_get_cache($checksum);
-
-  }
-  return FALSE;
-}
 
 function render_boost_form_system_performance_settings_alter(&$form, &$form_state, $form_id) {
   $config = config('render_boost.settings');
@@ -417,9 +345,7 @@ function render_boost_render_wrapper(&$elements) {
   
   $dynamic_content = FALSE;
   if(isset($elements['#name']) && in_array($elements['#name'], array('form_token', 'form_build_id'))){
-    //backdrop_set_message("<pre>" . $checksum . ' ' . htmlspecialchars(print_r($elements,true)) . "</pre>");
     $dynamic_content = TRUE;
-  
   }
   
   $output = render_boost_original_render($elements);
@@ -520,11 +446,6 @@ function render_boost_original_render(&$elements) {
   $prefix = isset($elements['#prefix']) ? $elements['#prefix'] : '';
   $suffix = isset($elements['#suffix']) ? $elements['#suffix'] : '';
   $output = $prefix . $elements['#children'] . $suffix;
-
-  // Cache the processed element if #cache is set.
-  if (isset($elements['#cache'])) {
-    backdrop_render_cache_set($output, $elements);
-  }
 
   $elements['#printed'] = TRUE;
 
