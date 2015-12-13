@@ -42,7 +42,6 @@ function render_boost_checksum($element){
   $now = microtime_float();
   $render_boost_count++;
   
-  //$element_copy = $element;
   $serialize = serialize($element);
   
   if(is_array($element) || is_object($element)){
@@ -66,9 +65,6 @@ function render_boost_checksum($element){
 }
 
 function render_boost_prepare_elements_for_md5($elements){
-  static $deep; 
-  global $render_boost_count_md5;
-  
 
   $return  = '';
   if(is_array($elements)){
@@ -98,15 +94,6 @@ function render_boost_prepare_elements_for_md5($elements){
 
   }
   
-  if($deep >0 ){
-    $deep ++;
-  }else{
-    $deep = 1;
-  }
-
-//  backdrop_set_message( " Deep " . $deep . "<pre> " .htmlspecialchars( print_r($elements,true)). " </pre>");
-
-  $now = microtime_float();
   foreach($elements as $key => $element){
     if(is_string($element)){
       if(0 !== strcmp($element,'form_token')
@@ -121,9 +108,7 @@ function render_boost_prepare_elements_for_md5($elements){
         }
       }
     }elseif(is_array($element)){
-//        backdrop_set_message( " Deep " . $deep . "<pre> " . htmlspecialchars(print_r((array)$element,true)). " </pre>"); 
       if(is_array($return)){
-//      
         $return[$key] = render_boost_prepare_elements_for_md5($element);
       }
       if(is_object($return)){
@@ -145,16 +130,6 @@ function render_boost_prepare_elements_for_md5($elements){
       }
     }
   }
-  
-  if($deep == 1){
-    $render_boost_count_md5 = $render_boost_count_md5 + (microtime_float() - $now);
-  }
-  
-  $deep --;
-  
-  
-  
-//  backdrop_set_message('elements: <pre>' . htmlspecialchars(print_r($return,true)) . '</pre>');
 
   return $return;
 }
