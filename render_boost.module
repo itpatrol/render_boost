@@ -11,6 +11,13 @@
 function render_boost_boot() {
   $config = config('render_boost.settings');
   if ($config->get('enable') && $config->get('debug')) {
+    // Init statistics data.
+    global $_render_boost_devel;
+    $_render_boost_devel['count'] = 0;
+    $_render_boost_devel['checksum'] = 0;
+    $_render_boost_devel['get'] = 0;
+    $_render_boost_devel['store'] = 0;
+
     backdrop_register_shutdown_function('render_boost_shutdown');
   }
 }
