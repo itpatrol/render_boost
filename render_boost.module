@@ -2,6 +2,7 @@
 
 /**
  * @file
+ * Render cache module.
  */
 
 /**
@@ -15,7 +16,7 @@ function render_boost_boot() {
 }
 
 /**
- * Implements hook_ajax_render_alter to disable devel output for AJAX queries.
+ * Implements hook_ajax_render_alter() to disable devel output for AJAX queries.
  */
 function render_boost_ajax_render_alter() {
   $GLOBALS['render_boost_debug_shutdown'] = FALSE;
@@ -49,7 +50,7 @@ function render_boost_microtime_float() {
 /**
  * Runs on shutdown to display developer information.
  *
- * render_boost_boot() registers this function as a shutdown function.
+ * Render_boost_boot() registers this function as a shutdown function.
  */
 function render_boost_shutdown() {
   if (isset($GLOBALS['render_boost_debug_shutdown'])) {
@@ -70,7 +71,7 @@ function render_boost_shutdown() {
 }
 
 /**
- * Internal function. Generate checksum for render element.
+ * Generate checksum for render element.
  */
 function render_boost_checksum($element) {
   if (empty($element)) {
@@ -105,8 +106,9 @@ function render_boost_checksum($element) {
 }
 
 /**
- * Internal function to prepare element for checksum  
+ * Internal function to prepare element for checksum
  * by removing dynamic data (form_token, form_build_id) from checksum.
+ *
  */
 function render_boost_prepare_elements_for_md5($elements) {
 
@@ -183,7 +185,7 @@ function render_boost_prepare_elements_for_md5($elements) {
 }
 
 /**
- * Internal function. Get first level properties from object.
+ * Get first level properties from object.
  */
 function render_boost_get_object_values($object) {
   $result = array();
@@ -196,7 +198,7 @@ function render_boost_get_object_values($object) {
 }
 
 /**
- * 
+ * Store cached data.
  */
 function render_boost_store_cache($checksum, $data) {
   if (empty($data)) {
@@ -228,7 +230,7 @@ function render_boost_store_cache($checksum, $data) {
 
 
 /**
- * Internal function. Get cache by checksum.
+ * Get cache by checksum.
  */
 function render_boost_get_cache($checksum) {
 
@@ -310,7 +312,7 @@ function render_boost_backdrop_render(&$elements) {
     // No cache for window.Backdrop = ....
     return render_boost_original_render($elements);
   }
-  
+
   // Early-return nothing if user does not have access.
   if (empty($elements) || (isset($elements['#access']) && !$elements['#access'])) {
     return '';
@@ -330,8 +332,8 @@ function render_boost_backdrop_render(&$elements) {
       if (!empty($output)) {
         render_boost_store_cache($check_sum, $output);
       }
-    } 
-    else{
+    }
+    else {
       render_boost_enable_forms_states_attaches($elements);
     }
   }
@@ -368,7 +370,7 @@ function render_boost_replace_dynamic_content($elements, &$output) {
 }
 
 /**
- * Used by render_boost_replace_dynamic_content to get real data for element by name.
+ * Used by render_boost_replace_dynamic_content to get data for element by name.
  */
 function render_boost_get_form_element($name, $elements) {
   if (isset($elements['#type']) && $elements['#type'] == 'form') {
