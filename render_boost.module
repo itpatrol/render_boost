@@ -24,13 +24,23 @@ function render_boost_ajax_render_alter() {
 
 
 /**
+ * Implements hook_cron().
+ */
+function render_boost_cron() {
+  $config = config('render_boost.settings');
+  if ($config->get('enable') && $config->get('debug')) {
+    backdrop_register_shutdown_function('render_boost_shutdown');
+  }
+}
+
+/**
  * Implements hook_flush_caches().
  */
 function render_boost_flush_caches() {
   $config = config('render_boost.settings');
   if (0 == $config->get('method')) {
     // Clear files data.
-    $dir = 'public://render_cache';
+    $dir = $config->get('file_storage_dir') ? $config->get('file_storage_dir') : 'public://render_cache';
     file_unmanaged_delete_recursive($dir);
     render_boost_cachedir_prepare();
   }
@@ -215,7 +225,8 @@ function render_boost_store_cache($checksum, $data) {
     cache('cache_render')->set($checksum, $data, $expire);
   }
   else {
-    $dest = 'public://render_cache/' . $checksum . '.php';
+    $dir = $config->get('file_storage_dir') ? $config->get('file_storage_dir') : 'public://render_cache';
+    $dest = $dir . '/' . $checksum . '.php';
     $record = '<?php $cached_data = \'' . str_replace("'", "\'", $data) . '\';';
     file_unmanaged_save_data($record, $dest, FILE_EXISTS_REPLACE);
   }
@@ -251,7 +262,7 @@ function render_boost_get_cache($checksum) {
     }
   }
   else {
-    $dir = 'public://render_cache';
+    $dir = $config->get('file_storage_dir') ? $config->get('file_storage_dir') : 'public://render_cache';
     $dest = $dir . '/' . $checksum . '.php';
     if (is_file($dest)) {
       include_once $dest;
@@ -440,6 +451,17 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
     '#description' => t('Please make sure that you properly configured cron.'),
   );
 
+  $form['render_boost']['settings']['file_storage_dir'] = array(
+    '#type' => 'textfield',
+    '#states' => array(
+      'visible' => array(
+        'select[name="render_boost[settings][method]"]' => array('value' => 0),
+      ),
+    ),
+    '#default_value' => $config->get('file_storage_dir') ? $config->get('file_storage_dir') : 'public://render_cache',
+    '#description' => t('Directory to store cache files.'),
+  );
+
   $form['render_boost']['settings']['database_storage_description'] = array(
     '#type' => 'item',
     '#states' => array(
@@ -468,6 +490,7 @@ function render_boost_system_settings_submit($form, &$form_state) {
   $config->set('expire', $form_state['values']['render_boost']['settings']['expire']);
   $config->set('debug', $form_state['values']['render_boost']['settings']['debug']);
   $config->set('method', $form_state['values']['render_boost']['settings']['method']);
+  $config->set('file_storage_dir', $form_state['values']['render_boost']['settings']['file_storage_dir']);
   $config->save();
 
   if (0 == $form_state['values']['render_boost']['settings']['method']) {
@@ -479,7 +502,8 @@ function render_boost_system_settings_submit($form, &$form_state) {
  * Prepare directory for filecache mode.
  */
 function render_boost_cachedir_prepare() {
-  $dir = 'public://render_cache';
+  $config = config('render_boost.settings');
+  $dir = $config->get('file_storage_dir') ? $config->get('file_storage_dir') : 'public://render_cache';
 
   file_prepare_directory($dir, FILE_CREATE_DIRECTORY);
   $htaccess_file = $dir . '/.htaccess';
