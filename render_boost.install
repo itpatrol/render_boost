@@ -1,15 +1,10 @@
 <?php
-  
-/**
- * Implements hook_enable().
- */
-function render_boots_enable() {
-//  config_set('system.core', 'menu_route_handler', 'layout_route_handler');
-}
 
 /**
- * Implements hook_disable().
+ * Implements hook_schema().
  */
-function render_boots_disable() {
-//  config_set('system.core', 'menu_route_handler', NULL);
+function render_boost_schema() {
+  $schema['cache_render'] = backdrop_get_schema_unprocessed('system', 'cache');
+  $schema['cache_render']['description'] = 'Cache table used to store render cache data, if render caching is enabled.';
+  return $schema;
 }

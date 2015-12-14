@@ -4,10 +4,28 @@
  * Implementation of hook_boot(). Runs even for cached pages.
  */
 function render_boost_boot() {  
-  backdrop_register_shutdown_function('render_boost_shutdown');
+  $config = config('render_boost.settings');
+  if($config->get('enable') && $config->get('debug')){
+    backdrop_register_shutdown_function('render_boost_shutdown');
+  }
 }
 
-function microtime_float()
+/**
+ * Implements hook_flush_caches().
+ */
+function render_boost_flush_caches() {
+  $config = config('render_boost.settings');
+  if(0 == $config->get('method')){
+    //clear files data
+    $dir = 'public://render_cache';
+    file_unmanaged_delete_recursive($dir);
+    render_boost_cachedir_prepare();
+  }
+
+  return array('cache_views', 'cache_views_data');
+}
+
+function render_boost_microtime_float()
 {
     list($usec, $sec) = explode(" ", microtime());
     return ((float)$usec + (float)$sec);
@@ -21,15 +39,12 @@ function render_boost_shutdown() {
   global $render_boost_count_get;
   global $render_boost_store_ids;
   global $render_boost_count_md5;
-  print "Render boost called: ". $render_boost_count . "\n<br>
-  checksum: " . round($render_boost_count_checksum *1000). "ms\n<br>
-  store: " . round($render_boost_count_store *1000). "ms\n<br>
-  get: " . round($render_boost_count_get*1000). "ms\n<br>
-  md5: " . round($render_boost_count_md5*1000). "ms\n<br>
-  <pre>" . print_r($render_boost_store_ids,true)."</pre>
-  ";
-//  print "Render boost called: ". $render_boost_count ."\n<br>";
-  
+  print '<div class="dev-render">Render boost called: '. $render_boost_count . '
+  <span class="checksum">checksum check: <b>' . round($render_boost_count_checksum *1000). 'ms</b></span>
+  <span class="store">cache store: <b>' . round($render_boost_count_store *1000). 'ms</b></span>
+  <span class="get">cache get: <b>' . round($render_boost_count_get*1000). 'ms</b></span>
+  <span class="total">Total: <b>' . round(($render_boost_count_checksum + $render_boost_count_store + $render_boost_count_get)*1000). 'ms</b></span>
+  </div>';
 }
 
 function render_boost_checksum($element){
@@ -39,11 +54,11 @@ function render_boost_checksum($element){
 
   global $render_boost_count;
   global $render_boost_count_checksum;
-  $now = microtime_float();
+  $now = render_boost_microtime_float();
   $render_boost_count++;
   
   $serialize = serialize($element);
-  
+    
   if(is_array($element) || is_object($element)){
     $need_sanitize = FALSE;
     $search_for =  array('form_token', 'form_build_id', '#build_id');
@@ -60,7 +75,7 @@ function render_boost_checksum($element){
   }
   
   $str = md5($serialize);
-  $render_boost_count_checksum = $render_boost_count_checksum + (microtime_float() - $now);
+  $render_boost_count_checksum = $render_boost_count_checksum + (render_boost_microtime_float() - $now);
   return $str;
 }
 
@@ -77,6 +92,7 @@ function render_boost_prepare_elements_for_md5($elements){
     if(isset($elements['#build_id'])){
       unset($elements['#build_id']);
     }
+
     $return = array();
   }
   
@@ -152,24 +168,31 @@ function render_boost_store_cache($checksum, $data){
   global $render_boost_store_ids;
 //  $render_boost_store_ids[] = $elements;
   global $render_boost_count_store;
-  $now = microtime_float();
+  $now = render_boost_microtime_float();
   // Construct the filepath where JS translation files are stored.
-//  $dir = '/www/bd1.2/files_private/render_boost/' ; //'private://' . settings_get('render_boost_cache_dir', 'render_boost');
-//  $dest = $dir . '/' . $checksum . '.html';
-//  file_prepare_directory($dir, FILE_CREATE_DIRECTORY);
-//  file_unmanaged_save_data($output, $dest);
-  $bin = 'cache';
-  $cid = $checksum;
-  $expire = time() + 3600;
-  cache($bin)->set($cid, $data, $expire);
-  $render_boost_count_store = $render_boost_count_store + (microtime_float() - $now);
+  
+  static $config;
+  
+  if(empty($config)){
+    $config = config('render_boost.settings');
+  }
+  
+  if($config->get('method')){
+    $expire = time() + 3600;
+    cache('cache_render')->set($checksum, $data, $expire);
+  }else{
+    $dest =  'public://render_cache/' . $checksum . '.php';
+    $record = '<?php $cached_data = \'' . str_replace("'", "\'" , $data) . '\';'; 
+    file_unmanaged_save_data($record, $dest, FILE_EXISTS_REPLACE);
+  }
+  $render_boost_count_store = $render_boost_count_store + (render_boost_microtime_float() - $now);
 }
 
 
 function render_boost_get_cache($checksum){
   
   global $render_boost_count_get;
-  $now = microtime_float();
+  $now = render_boost_microtime_float();
 
   static $checksums;
   
@@ -177,28 +200,31 @@ function render_boost_get_cache($checksum){
     return $checksums[$checksum];
   }
   
-/*  $dir = '/www/bd1.2/files_private/render_boost/' ; //$dir = 'private://' . settings_get('render_boost_cache_dir', 'render_boost');
-  
-  $dest = $dir . '/' . $checksum . '.html';
-
-  $source = file_get_contents($dest);
-  if(FALSE !== $source){
-
-    if (!empty($elements['#attached'])) {
-      backdrop_process_attached($elements);
-    }
-    $render_boost_count_get = $render_boost_count_get + (microtime_float() - $now);
-    return $source;
-  }
-  */
   $return = FALSE;
-  $cid = $checksum;
-  $bin='cache';
-  if($cache = cache($bin)->get($cid)){
-    $return = $cache->data; 
-//    $checksums[$checksum] = $return;
+  
+  static $config;
+  
+  if(empty($config)){
+    $config = config('render_boost.settings');
   }
-  $render_boost_count_get = $render_boost_count_get + (microtime_float() - $now);
+
+  if($config->get('method')){
+    if($cache = cache('cache_render')->get($checksum)){
+      $return = $cache->data;
+    }
+  }else{
+    $dir = 'public://render_cache';
+    $dest = $dir . '/' . $checksum . '.php';
+    if(is_file($dest)){
+      include_once($dest);
+      if(isset($cached_data)){
+        $return = $cached_data;
+      }
+    }
+    
+  }
+  $checksums[$checksum] = $return;
+  $render_boost_count_get = $render_boost_count_get + (render_boost_microtime_float() - $now);
   
   return $return;
 }
@@ -235,16 +261,20 @@ function render_boost_backdrop_render(&$elements) {
   if($elements === $empty_array){
     return "";
   }
+  
+  if(isset($elements['#type']) && $elements['#type'] == 'scripts'){
+    // No cache for window.Backdrop = ....
+    return render_boost_original_render($elements);    
+  }
+
 
   if($check_sum = render_boost_checksum($elements)){
   
     if(!$output = render_boost_get_cached_data($elements, $check_sum)){
-//      backdrop_set_message( " Check element <pre>" . htmlspecialchars(print_r($elements,true)). "</pre>");
+
       $output = render_boost_render_wrapper($elements);
   
-//
       if(!empty($output)){
-//              backdrop_set_message( " No cache " . $check_sum . " . <pre>" . htmlspecialchars(print_r($elements,true)) . htmlspecialchars($output). "</pre>");
         render_boost_store_cache($check_sum, $output);
       }
     }
@@ -254,7 +284,6 @@ function render_boost_backdrop_render(&$elements) {
   
   render_boost_replace_dynamic_content($elements,$output);
   
-//  backdrop_set_message("<pre>" . $checksum . ' ' . htmlspecialchars($output) . "</pre>");
   return $output;
 }
 
@@ -293,18 +322,67 @@ function render_boost_get_form_element($name, $elements){
 
 
 function render_boost_form_system_performance_settings_alter(&$form, &$form_state, $form_id) {
+  
   $config = config('render_boost.settings');
 
   $form['render_boost'] = array(
     '#type' => 'fieldset',
     '#title' => t('Render boost'),
+    '#description' => t('Render cache helps to avoid needless re-rendering of page elements by caching results.'),
     '#tree' => TRUE,
   );
-
+  
   $form['render_boost']['enable'] = array(
     '#type' => 'checkbox',
-    '#title' => t("Enable render boost."),
+    '#title' => t("Enable render cache."),
     '#default_value' => $config->get('enable'),
+  );
+
+  $form['render_boost']['settings'] = array(
+    '#type' => 'container',
+    '#states' => array(
+      // Hide the query log settings when not displaying query log.
+      'invisible' => array(
+        'input[name="render_boost[enable]"]' => array('checked' => FALSE),
+      ),
+    ),
+  );  
+
+  $form['render_boost']['settings']['method'] = array(
+    '#type' => 'select',
+    '#title' => t("Cache method"),
+    '#options' => array(
+      0 => t('File storage'),
+      1 => t('Database storage'),
+    ),
+    '#default_value' => $config->get('method'),
+  );
+  
+  $form['render_boost']['settings']['file_storage_description'] = array(
+    '#type' => 'item',
+    '#states' => array(
+      'visible' => array(
+        'select[name="render_boost[settings][method]"]' => array('value' => 0),
+      ),
+    ),
+    '#description' => t('Please make sure that you properly configured cron.'),
+  );
+
+  $form['render_boost']['settings']['database_storage_description'] = array(
+    '#type' => 'item',
+    '#states' => array(
+      'visible' => array(
+        'select[name="render_boost[settings][method]"]' => array('value' => 1),
+      ),
+    ),
+    '#description' => t('Cached results cleaned after 1 hour by cache clean process.'),
+  );
+
+
+  $form['render_boost']['settings']['debug'] = array(
+    '#type' => 'checkbox',
+    '#title' => t("Enable debug output."),
+    '#default_value' => $config->get('debug'),
   );
 
   $form['#submit'][] = 'render_boost_system_settings_submit';  
@@ -313,7 +391,26 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
 function render_boost_system_settings_submit($form, &$form_state) {
   $config = config('render_boost.settings');
   $config->set('enable', $form_state['values']['render_boost']['enable']);
+  $config->set('debug', $form_state['values']['render_boost']['settings']['debug']);
+  $config->set('method', $form_state['values']['render_boost']['settings']['method']);
   $config->save();
+  
+  if(0 == $form_state['values']['render_boost']['settings']['method']){
+    render_boost_cachedir_prepare();
+  }
+}
+
+
+function render_boost_cachedir_prepare(){
+  $dir = 'public://render_cache';
+  
+  file_prepare_directory($dir, FILE_CREATE_DIRECTORY);
+  $htaccess_file = $dir . '/.htaccess';
+  
+  if(!is_file($htaccess_file)){
+    $htaccess_data = "order deny,allow\ndeny from all";
+    file_unmanaged_save_data($htaccess_data, $htaccess_file, FILE_EXISTS_REPLACE);
+  }  
 }
 
 function render_boost_render_wrapper(&$elements) {
