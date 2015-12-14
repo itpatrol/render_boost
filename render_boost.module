@@ -40,8 +40,19 @@ function render_boost_flush_caches() {
   $config = config('render_boost.settings');
   if (0 == $config->get('method')) {
     // Clear files data.
-    $dir = $config->get('file_storage_dir') ? $config->get('file_storage_dir') : 'public://render_cache';
-    file_unmanaged_delete_recursive($dir);
+    $dirpath = $config->get('file_storage_dir') ? $config->get('file_storage_dir') : 'public://render_cache';
+    
+    if (is_dir($dirpath)) {
+    $dir = dir($dirpath);
+      while (($entry = $dir->read()) !== FALSE) {
+        $fileinfo = pathinfo($dirpath . '/' . $entry);
+        if($fileinfo['extension'] == 'php'){
+          backdrop_rmdir($dirpath . '/' . $entry);
+        }
+      }
+      $dir->close();
+    }
+  
     render_boost_cachedir_prepare();
   }
 
