@@ -1,15 +1,22 @@
 <?php
 
 /**
+ * @file
+ */
+
+/**
  * Implementation of hook_boot(). Runs even for cached pages.
  */
-function render_boost_boot() {  
+function render_boost_boot() {
   $config = config('render_boost.settings');
-  if($config->get('enable') && $config->get('debug')){
+  if ($config->get('enable') && $config->get('debug')) {
     backdrop_register_shutdown_function('render_boost_shutdown');
   }
 }
 
+/**
+ *
+ */
 function render_boost_ajax_render_alter() {
   $GLOBALS['render_boost_debug_shutdown'] = FALSE;
 }
@@ -20,8 +27,8 @@ function render_boost_ajax_render_alter() {
  */
 function render_boost_flush_caches() {
   $config = config('render_boost.settings');
-  if(0 == $config->get('method')){
-    //clear files data
+  if (0 == $config->get('method')) {
+    // Clear files data.
     $dir = 'public://render_cache';
     file_unmanaged_delete_recursive($dir);
     render_boost_cachedir_prepare();
@@ -30,14 +37,20 @@ function render_boost_flush_caches() {
   return array('cache_views', 'cache_views_data');
 }
 
-function render_boost_microtime_float()
-{
-    list($usec, $sec) = explode(" ", microtime());
-    return ((float)$usec + (float)$sec);
+/**
+ *
+ */
+function render_boost_microtime_float() {
+
+  list($usec, $sec) = explode(" ", microtime());
+  return ((float) $usec + (float) $sec);
 }
 
+/**
+ *
+ */
 function render_boost_shutdown() {
-  if(isset($GLOBALS['render_boost_debug_shutdown'])){
+  if (isset($GLOBALS['render_boost_debug_shutdown'])) {
     return;
   }
   global $render_boost_count;
@@ -46,16 +59,19 @@ function render_boost_shutdown() {
   global $render_boost_count_get;
   global $render_boost_store_ids;
   global $render_boost_count_md5;
-  print '<div class="dev-render">Render boost called: '. $render_boost_count . '
-  <span class="checksum">checksum check: <b>' . round($render_boost_count_checksum *1000). 'ms</b></span>
-  <span class="store">cache store: <b>' . round($render_boost_count_store *1000). 'ms</b></span>
-  <span class="get">cache get: <b>' . round($render_boost_count_get*1000). 'ms</b></span>
-  <span class="total">Total: <b>' . round(($render_boost_count_checksum + $render_boost_count_store + $render_boost_count_get)*1000). 'ms</b></span>
+  print '<div class="dev-render">Render boost called: ' . $render_boost_count . '
+  <span class="checksum">checksum check: <b>' . round($render_boost_count_checksum * 1000) . 'ms</b></span>
+  <span class="store">cache store: <b>' . round($render_boost_count_store * 1000) . 'ms</b></span>
+  <span class="get">cache get: <b>' . round($render_boost_count_get * 1000) . 'ms</b></span>
+  <span class="total">Total: <b>' . round(($render_boost_count_checksum + $render_boost_count_store + $render_boost_count_get) * 1000) . 'ms</b></span>
   </div>';
 }
 
-function render_boost_checksum($element){
-  if(empty($element)){
+/**
+ *
+ */
+function render_boost_checksum($element) {
+  if (empty($element)) {
     return FALSE;
   }
 
@@ -63,92 +79,98 @@ function render_boost_checksum($element){
   global $render_boost_count_checksum;
   $now = render_boost_microtime_float();
   $render_boost_count++;
-  
+
   $serialize = serialize($element);
-    
-  if(is_array($element) || is_object($element)){
+
+  if (is_array($element) || is_object($element)) {
     $need_sanitize = FALSE;
-    $search_for =  array('form_token', 'form_build_id', '#build_id');
-    foreach($search_for as $str){
-      if(FALSE !==  strpos($serialize, $str)){
+    $search_for = array('form_token', 'form_build_id', '#build_id');
+    foreach ($search_for as $str) {
+      if (FALSE !== strpos($serialize, $str)) {
         $need_sanitize = TRUE;
         break;
       }
     }
-    if($need_sanitize){
+    if ($need_sanitize) {
       $element_copy = render_boost_prepare_elements_for_md5($element);
       $serialize = serialize($element_copy);
     }
   }
-  
+
   $str = md5($serialize);
   $render_boost_count_checksum = $render_boost_count_checksum + (render_boost_microtime_float() - $now);
   return $str;
 }
 
-function render_boost_prepare_elements_for_md5($elements){
+/**
+ *
+ */
+function render_boost_prepare_elements_for_md5($elements) {
 
   $return  = '';
-  if(is_array($elements)){
-    if(isset($elements['form_token'])){
+  if (is_array($elements)) {
+    if (isset($elements['form_token'])) {
       unset($elements['form_token']);
     }
-    if(isset($elements['form_build_id'])){
+    if (isset($elements['form_build_id'])) {
       unset($elements['form_build_id']);
     }
-    if(isset($elements['#build_id'])){
+    if (isset($elements['#build_id'])) {
       unset($elements['#build_id']);
     }
 
     $return = array();
   }
-  
-  if(is_object($elements)){
+
+  if (is_object($elements)) {
     $return = new stdClass();
-    if(isset($elements->form_token)){
+    if (isset($elements->form_token)) {
       unset($elements->form_token);
     }
-    if(isset($elements->form_build_id)){
+    if (isset($elements->form_build_id)) {
       unset($elements->form_build_id);
     }
-    if(isset($elements->{'#build_id'})){
+    if (isset($elements->{'#build_id'})) {
       unset($elements->{'#build_id'});
     }
 
   }
-  
-  foreach($elements as $key => $element){
-    if(is_string($element)){
-      if(0 !== strcmp($element,'form_token')
-        && 0 !== strcmp($element,'form_build_id')
-        && 0 !== strcmp($element,'#build_id')
-      ){
-        if(is_array($return)){
+
+  foreach ($elements as $key => $element) {
+    if (is_string($element)) {
+      if (0 !== strcmp($element, 'form_token')
+        && 0 !== strcmp($element, 'form_build_id')
+        && 0 !== strcmp($element, '#build_id')
+      ) {
+        if (is_array($return)) {
           $return[$key] = $element;
         }
-        if(is_object($return)){
+        if (is_object($return)) {
           $return->{$key} = $element;
         }
       }
-    }elseif(is_array($element)){
-      if(is_array($return)){
+    }
+    elseif (is_array($element)) {
+      if (is_array($return)) {
         $return[$key] = render_boost_prepare_elements_for_md5($element);
       }
-      if(is_object($return)){
+      if (is_object($return)) {
         $return->{$key} = render_boost_prepare_elements_for_md5($element);
-      }      
-    }elseif(is_object($element)){
-      if(is_array($return)){
+      }
+    }
+    elseif (is_object($element)) {
+      if (is_array($return)) {
         $return[$key] = render_boost_get_object_values($element);
       }
-      if(is_object($return)){
+      if (is_object($return)) {
         $return->{$key} = render_boost_get_object_values($element);
       }
-    }else{
-      if(is_array($return)){
+    }
+    else {
+      if (is_array($return)) {
         $return[$key] = $element;
       }
-      if(is_object($return)){
+      if (is_object($return)) {
         $return->{$key} = $element;
       }
     }
@@ -157,87 +179,100 @@ function render_boost_prepare_elements_for_md5($elements){
   return $return;
 }
 
-function render_boost_get_object_values($object){
+/**
+ *
+ */
+function render_boost_get_object_values($object) {
   $result = array();
-  foreach($object as $key => $val){
-    if(is_string($val) || is_bool($val) || is_numeric($val)){
+  foreach ($object as $key => $val) {
+    if (is_string($val) || is_bool($val) || is_numeric($val)) {
       $result[$key] = $val;
     }
   }
   return $result;
 }
 
-function render_boost_store_cache($checksum, $data){
-  if(empty($data)){
-    // do not cache empty
+/**
+ *
+ */
+function render_boost_store_cache($checksum, $data) {
+  if (empty($data)) {
+    // Do not cache empty.
     return;
   }
   global $render_boost_store_ids;
-//  $render_boost_store_ids[] = $elements;
+  //  $render_boost_store_ids[] = $elements;
   global $render_boost_count_store;
   $now = render_boost_microtime_float();
   // Construct the filepath where JS translation files are stored.
-  
   static $config;
-  
-  if(empty($config)){
+
+  if (empty($config)) {
     $config = config('render_boost.settings');
   }
-  
-  if($config->get('method')){
+
+  if ($config->get('method')) {
     $expire = time() + 3600;
     cache('cache_render')->set($checksum, $data, $expire);
-  }else{
-    $dest =  'public://render_cache/' . $checksum . '.php';
-    $record = '<?php $cached_data = \'' . str_replace("'", "\'" , $data) . '\';'; 
+  }
+  else {
+    $dest = 'public://render_cache/' . $checksum . '.php';
+    $record = '<?php $cached_data = \'' . str_replace("'", "\'", $data) . '\';';
     file_unmanaged_save_data($record, $dest, FILE_EXISTS_REPLACE);
   }
   $render_boost_count_store = $render_boost_count_store + (render_boost_microtime_float() - $now);
 }
 
 
-function render_boost_get_cache($checksum){
-  
+/**
+ *
+ */
+function render_boost_get_cache($checksum) {
+
   global $render_boost_count_get;
   $now = render_boost_microtime_float();
 
   static $checksums;
-  
-  if(isset($checksums[$checksum])){
+
+  if (isset($checksums[$checksum])) {
     return $checksums[$checksum];
   }
-  
+
   $return = FALSE;
-  
+
   static $config;
-  
-  if(empty($config)){
+
+  if (empty($config)) {
     $config = config('render_boost.settings');
   }
 
-  if($config->get('method')){
-    if($cache = cache('cache_render')->get($checksum)){
+  if ($config->get('method')) {
+    if ($cache = cache('cache_render')->get($checksum)) {
       $return = $cache->data;
     }
-  }else{
+  }
+  else {
     $dir = 'public://render_cache';
     $dest = $dir . '/' . $checksum . '.php';
-    if(is_file($dest)){
-      include_once($dest);
-      if(isset($cached_data)){
+    if (is_file($dest)) {
+      include_once $dest;
+      if (isset($cached_data)) {
         $return = $cached_data;
       }
     }
-    
+
   }
   $checksums[$checksum] = $return;
   $render_boost_count_get = $render_boost_count_get + (render_boost_microtime_float() - $now);
-  
+
   return $return;
 }
 
-function render_boost_get_cached_data($elements, $check_sum){
-    // Early-return nothing if user does not have access.
+/**
+ *
+ */
+function render_boost_get_cached_data($elements, $check_sum) {
+  // Early-return nothing if user does not have access.
   if (empty($elements) || (isset($elements['#access']) && !$elements['#access'])) {
     return '';
   }
@@ -247,8 +282,8 @@ function render_boost_get_cached_data($elements, $check_sum){
     return '';
   }
 
-  if($cache_data = render_boost_get_cache($check_sum)){
-    
+  if ($cache_data = render_boost_get_cache($check_sum)) {
+
     render_boost_enable_forms_states_attaches($elements);
 
     return $cache_data;
@@ -256,7 +291,10 @@ function render_boost_get_cached_data($elements, $check_sum){
   return FALSE;
 }
 
-function render_boost_enable_forms_states_attaches($elements){
+/**
+ *
+ */
+function render_boost_enable_forms_states_attaches($elements) {
   if (!empty($elements['#states'])) {
     backdrop_process_states($elements);
   }
@@ -264,63 +302,70 @@ function render_boost_enable_forms_states_attaches($elements){
   if (!empty($elements['#attached'])) {
     backdrop_process_attached($elements);
   }
-  foreach($elements as $key => $val){
-    if(is_array($val)){
+  foreach ($elements as $key => $val) {
+    if (is_array($val)) {
       render_boost_enable_forms_states_attaches($val);
     }
   }
 }
 
+/**
+ *
+ */
 function render_boost_backdrop_render(&$elements) {
   $empty_array = array(
     '#printed' => FALSE,
   );
-  
-  if($elements === $empty_array){
+
+  if ($elements === $empty_array) {
     return "";
   }
-  
-  if(isset($elements['#markup'])){
+
+  if (isset($elements['#markup'])) {
     // No cache for markup.
     return render_boost_original_render($elements);
   }
-  
-  if(isset($elements['#type']) && $elements['#type'] == 'scripts'){
+
+  if (isset($elements['#type']) && $elements['#type'] == 'scripts') {
     // No cache for window.Backdrop = ....
-    return render_boost_original_render($elements);    
+    return render_boost_original_render($elements);
   }
 
+  if ($check_sum = render_boost_checksum($elements)) {
 
-  if($check_sum = render_boost_checksum($elements)){
-  
-    if(!$output = render_boost_get_cached_data($elements, $check_sum)){
+    if (!$output = render_boost_get_cached_data($elements, $check_sum)) {
 
       $output = render_boost_render_wrapper($elements);
-  
-      if(!empty($output)){
+
+      if (!empty($output)) {
         render_boost_store_cache($check_sum, $output);
       }
     }
-  } else {
+  }
+  else {
     $output = render_boost_render_wrapper($elements);
   }
-  
-  render_boost_replace_dynamic_content($elements,$output);
-  
+
+  render_boost_replace_dynamic_content($elements, $output);
+
   return $output;
 }
 
-function render_boost_replace_dynamic_content($elements, &$output){
+/**
+ *
+ */
+function render_boost_replace_dynamic_content($elements, &$output) {
 
-  preg_match_all('/<!-- REPLACE: (.*?) --\>/', $output, $matches); 
+  preg_match_all('/<!-- REPLACE: (.*?) --\>/', $output, $matches);
 
-  if(!empty($matches[0])){
+  if (!empty($matches[0])) {
 
-    foreach($matches[1] as $key => $name){
-      if($element = render_boost_get_form_element($name, $elements)){
+    foreach ($matches[1] as $key => $name) {
+      if ($element = render_boost_get_form_element($name, $elements)) {
         if (!empty($element['#printed'])) {
           $rendered_element = $element['#children'];
-        }else{
+        }
+        else {
           $rendered_element = render_boost_original_render($element);
         }
         $output = str_replace($matches[0][$key], $rendered_element, $output);
@@ -329,14 +374,18 @@ function render_boost_replace_dynamic_content($elements, &$output){
   }
 }
 
-function render_boost_get_form_element($name, $elements){
-  if(isset($elements['#type']) && $elements['#type'] == 'form'){
-    if(isset($elements[$name])){
+/**
+ *
+ */
+function render_boost_get_form_element($name, $elements) {
+  if (isset($elements['#type']) && $elements['#type'] == 'form') {
+    if (isset($elements[$name])) {
       return $elements[$name];
     }
-  } else {
-    foreach($elements as $variable => $element){
-      if(is_array($element) && isset($element[$name])){
+  }
+  else {
+    foreach ($elements as $variable => $element) {
+      if (is_array($element) && isset($element[$name])) {
         return $element[$name];
       }
     }
@@ -344,8 +393,11 @@ function render_boost_get_form_element($name, $elements){
 }
 
 
+/**
+ *
+ */
 function render_boost_form_system_performance_settings_alter(&$form, &$form_state, $form_id) {
-  
+
   $config = config('render_boost.settings');
 
   $form['render_boost'] = array(
@@ -354,7 +406,7 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
     '#description' => t('Render cache helps to avoid needless re-rendering of page elements by caching results.'),
     '#tree' => TRUE,
   );
-  
+
   $form['render_boost']['enable'] = array(
     '#type' => 'checkbox',
     '#title' => t("Enable render cache."),
@@ -369,7 +421,7 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
         'input[name="render_boost[enable]"]' => array('checked' => FALSE),
       ),
     ),
-  );  
+  );
 
   $form['render_boost']['settings']['method'] = array(
     '#type' => 'select',
@@ -380,7 +432,7 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
     ),
     '#default_value' => $config->get('method'),
   );
-  
+
   $form['render_boost']['settings']['file_storage_description'] = array(
     '#type' => 'item',
     '#states' => array(
@@ -401,58 +453,69 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
     '#description' => t('Cached results cleaned after 1 hour by cache clean process.'),
   );
 
-
   $form['render_boost']['settings']['debug'] = array(
     '#type' => 'checkbox',
     '#title' => t("Enable debug output."),
     '#default_value' => $config->get('debug'),
   );
 
-  $form['#submit'][] = 'render_boost_system_settings_submit';  
+  $form['#submit'][] = 'render_boost_system_settings_submit';
 }
 
+/**
+ *
+ */
 function render_boost_system_settings_submit($form, &$form_state) {
   $config = config('render_boost.settings');
   $config->set('enable', $form_state['values']['render_boost']['enable']);
   $config->set('debug', $form_state['values']['render_boost']['settings']['debug']);
   $config->set('method', $form_state['values']['render_boost']['settings']['method']);
   $config->save();
-  
-  if(0 == $form_state['values']['render_boost']['settings']['method']){
+
+  if (0 == $form_state['values']['render_boost']['settings']['method']) {
     render_boost_cachedir_prepare();
   }
 }
 
 
-function render_boost_cachedir_prepare(){
+/**
+ *
+ */
+function render_boost_cachedir_prepare() {
   $dir = 'public://render_cache';
-  
+
   file_prepare_directory($dir, FILE_CREATE_DIRECTORY);
   $htaccess_file = $dir . '/.htaccess';
-  
-  if(!is_file($htaccess_file)){
+
+  if (!is_file($htaccess_file)) {
     $htaccess_data = "order deny,allow\ndeny from all";
     file_unmanaged_save_data($htaccess_data, $htaccess_file, FILE_EXISTS_REPLACE);
-  }  
+  }
 }
 
+/**
+ *
+ */
 function render_boost_render_wrapper(&$elements) {
-  
+
   $dynamic_content = FALSE;
-  if(isset($elements['#name']) && in_array($elements['#name'], array('form_token', 'form_build_id'))){
+  if (isset($elements['#name']) && in_array($elements['#name'], array('form_token', 'form_build_id'))) {
     $dynamic_content = TRUE;
   }
-  
+
   $output = render_boost_original_render($elements);
-  
-  if($dynamic_content) {
+
+  if ($dynamic_content) {
     $output = '<!-- REPLACE: ' . $elements['#name'] . ' -->';
   }
-  return $output;    
+  return $output;
 }
 
-function render_boost_original_render(&$elements) {  
-    // Early-return nothing if user does not have access.
+/**
+ *
+ */
+function render_boost_original_render(&$elements) {
+  // Early-return nothing if user does not have access.
   if (empty($elements) || (isset($elements['#access']) && !$elements['#access'])) {
     return '';
   }
