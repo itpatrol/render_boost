@@ -197,7 +197,7 @@ function render_boost_get_object_values($object) {
  */
 function render_boost_store_cache($checksum, $data) {
   if (empty($data)) {
-    // Do not cache empty.
+    // Do not cache empty data.
     return;
   }
   global $_render_boost_devel;
@@ -210,7 +210,8 @@ function render_boost_store_cache($checksum, $data) {
   }
 
   if ($config->get('method')) {
-    $expire = time() + 3600;
+    $expire_after = $config->get('expire') ? $config->get('expire') : 3600;
+    $expire = REQUEST_TIME + $expire_after ;
     cache('cache_render')->set($checksum, $data, $expire);
   }
   else {
@@ -410,6 +411,15 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
     ),
   );
 
+  $period = backdrop_map_assoc(array(1800, 2700, 3600, 10800, 21600, 32400, 43200, 86400), 'format_interval');
+  $form['render_boost']['settings']['expire'] = array(
+    '#type' => 'select',
+    '#title' => t("Cache expiration time"),
+    '#options' => $period,
+    '#default_value' => $config->get('expire') ? $config->get('expire') : 3600 ,
+    '#description' => t('Clean cache after this period.'),
+  );
+
   $form['render_boost']['settings']['method'] = array(
     '#type' => 'select',
     '#title' => t("Cache method"),
@@ -455,6 +465,7 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
 function render_boost_system_settings_submit($form, &$form_state) {
   $config = config('render_boost.settings');
   $config->set('enable', $form_state['values']['render_boost']['enable']);
+  $config->set('expire', $form_state['values']['render_boost']['settings']['expire']);
   $config->set('debug', $form_state['values']['render_boost']['settings']['debug']);
   $config->set('method', $form_state['values']['render_boost']['settings']['method']);
   $config->save();
