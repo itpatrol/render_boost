@@ -28,8 +28,21 @@ function render_boost_ajax_render_alter() {
  */
 function render_boost_cron() {
   $config = config('render_boost.settings');
-  if ($config->get('enable') && $config->get('debug')) {
-    backdrop_register_shutdown_function('render_boost_shutdown');
+  if ($config->get('enable') && (0 == $config->get('method'))) {
+    $expire_after = $config->get('expire') ? $config->get('expire') : 3600;
+    $dirpath = $config->get('file_storage_dir') ? $config->get('file_storage_dir') : 'public://render_cache';
+    if (is_dir($dirpath)) {
+    $dir = dir($dirpath);
+      while (($entry = $dir->read()) !== FALSE) {
+        if(is_file($dirpath . '/' . $entry)){
+          $fileinfo = fileatime($dirpath . '/' . $entry);
+          if($fileinfo < REQUEST_TIME - $expire_after){
+            backdrop_set_message($dirpath . '/' . $entry . ":" .$fileinfo. ":" . (REQUEST_TIME - $expire_after));
+          }
+        }
+      }
+      $dir->close();
+    }
   }
 }
 
@@ -45,9 +58,11 @@ function render_boost_flush_caches() {
     if (is_dir($dirpath)) {
     $dir = dir($dirpath);
       while (($entry = $dir->read()) !== FALSE) {
-        $fileinfo = pathinfo($dirpath . '/' . $entry);
-        if($fileinfo['extension'] == 'php'){
-          backdrop_rmdir($dirpath . '/' . $entry);
+        if(is_file($dirpath . '/' . $entry)){
+          $fileinfo = pathinfo($dirpath . '/' . $entry);
+          if($fileinfo['extension'] == 'php'){
+            unlink($dirpath . '/' . $entry);
+          }
         }
       }
       $dir->close();
