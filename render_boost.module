@@ -10,6 +10,11 @@ function render_boost_boot() {
   }
 }
 
+function render_boost_ajax_render_alter() {
+  $GLOBALS['render_boost_debug_shutdown'] = FALSE;
+}
+
+
 /**
  * Implements hook_flush_caches().
  */
@@ -32,7 +37,9 @@ function render_boost_microtime_float()
 }
 
 function render_boost_shutdown() {
-
+  if(isset($GLOBALS['render_boost_debug_shutdown'])){
+    return;
+  }
   global $render_boost_count;
   global $render_boost_count_checksum;
   global $render_boost_count_store;
@@ -241,16 +248,27 @@ function render_boost_get_cached_data($elements, $check_sum){
   }
 
   if($cache_data = render_boost_get_cache($check_sum)){
-    if (!empty($elements['#states'])) {
-      backdrop_process_states($elements);
-    }
+    
+    render_boost_enable_forms_states_attaches($elements);
 
-    if (!empty($elements['#attached'])) {
-      backdrop_process_attached($elements);
-    }
     return $cache_data;
   }
   return FALSE;
+}
+
+function render_boost_enable_forms_states_attaches($elements){
+  if (!empty($elements['#states'])) {
+    backdrop_process_states($elements);
+  }
+
+  if (!empty($elements['#attached'])) {
+    backdrop_process_attached($elements);
+  }
+  foreach($elements as $key => $val){
+    if(is_array($val)){
+      render_boost_enable_forms_states_attaches($val);
+    }
+  }
 }
 
 function render_boost_backdrop_render(&$elements) {
@@ -260,6 +278,11 @@ function render_boost_backdrop_render(&$elements) {
   
   if($elements === $empty_array){
     return "";
+  }
+  
+  if(isset($elements['#markup'])){
+    // No cache for markup.
+    return render_boost_original_render($elements);
   }
   
   if(isset($elements['#type']) && $elements['#type'] == 'scripts'){
@@ -278,7 +301,7 @@ function render_boost_backdrop_render(&$elements) {
         render_boost_store_cache($check_sum, $output);
       }
     }
-  } else{
+  } else {
     $output = render_boost_render_wrapper($elements);
   }
   
