@@ -57,7 +57,7 @@ function render_boost_shutdown() {
     return;
   }
   global $_render_boost_devel;
-  
+
   print '<div class="dev-render">Render boost called: ' . $_render_boost_devel['count'] . '
   <span class="checksum">checksum check: <b>' . round($_render_boost_devel['checksum'] * 1000) . 'ms</b></span>
   <span class="store">cache store: <b>' . round($_render_boost_devel['store'] * 1000) . 'ms</b></span>
@@ -75,7 +75,7 @@ function render_boost_checksum($element) {
   }
 
   global $_render_boost_devel;
-  
+
   $now = render_boost_microtime_float();
   $_render_boost_devel['count']++;
 
@@ -104,7 +104,6 @@ function render_boost_checksum($element) {
 /**
  * Internal function to prepare element for checksum
  * by removing dynamic data (form_token, form_build_id) from checksum.
- *
  */
 function render_boost_prepare_elements_for_md5($elements) {
 
