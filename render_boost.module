@@ -16,7 +16,7 @@ function render_boost_boot() {
 }
 
 /**
- * Implements hook_ajax_render_alter() to disable devel output for AJAX queries.
+ * Disable devel output for AJAX queries.
  */
 function render_boost_ajax_render_alter() {
   $GLOBALS['render_boost_debug_shutdown'] = FALSE;
@@ -56,17 +56,13 @@ function render_boost_shutdown() {
   if (isset($GLOBALS['render_boost_debug_shutdown'])) {
     return;
   }
-  global $render_boost_count;
-  global $render_boost_count_checksum;
-  global $render_boost_count_store;
-  global $render_boost_count_get;
-  global $render_boost_store_ids;
-  global $render_boost_count_md5;
-  print '<div class="dev-render">Render boost called: ' . $render_boost_count . '
-  <span class="checksum">checksum check: <b>' . round($render_boost_count_checksum * 1000) . 'ms</b></span>
-  <span class="store">cache store: <b>' . round($render_boost_count_store * 1000) . 'ms</b></span>
-  <span class="get">cache get: <b>' . round($render_boost_count_get * 1000) . 'ms</b></span>
-  <span class="total">Total: <b>' . round(($render_boost_count_checksum + $render_boost_count_store + $render_boost_count_get) * 1000) . 'ms</b></span>
+  global $_render_boost_devel;
+  
+  print '<div class="dev-render">Render boost called: ' . $_render_boost_devel['count'] . '
+  <span class="checksum">checksum check: <b>' . round($_render_boost_devel['checksum'] * 1000) . 'ms</b></span>
+  <span class="store">cache store: <b>' . round($_render_boost_devel['store'] * 1000) . 'ms</b></span>
+  <span class="get">cache get: <b>' . round($_render_boost_devel['get'] * 1000) . 'ms</b></span>
+  <span class="total">Total: <b>' . round(($_render_boost_devel['checksum'] + $_render_boost_devel['store'] + $_render_boost_devel['get']) * 1000) . 'ms</b></span>
   </div>';
 }
 
@@ -78,10 +74,10 @@ function render_boost_checksum($element) {
     return FALSE;
   }
 
-  global $render_boost_count;
-  global $render_boost_count_checksum;
+  global $_render_boost_devel;
+  
   $now = render_boost_microtime_float();
-  $render_boost_count++;
+  $_render_boost_devel['count']++;
 
   $serialize = serialize($element);
 
@@ -101,7 +97,7 @@ function render_boost_checksum($element) {
   }
 
   $str = md5($serialize);
-  $render_boost_count_checksum = $render_boost_count_checksum + (render_boost_microtime_float() - $now);
+  $_render_boost_devel['checksum'] = $_render_boost_devel['checksum'] + (render_boost_microtime_float() - $now);
   return $str;
 }
 
@@ -205,9 +201,7 @@ function render_boost_store_cache($checksum, $data) {
     // Do not cache empty.
     return;
   }
-  global $render_boost_store_ids;
-  //  $render_boost_store_ids[] = $elements;
-  global $render_boost_count_store;
+  global $_render_boost_devel;
   $now = render_boost_microtime_float();
   // Construct the filepath where JS translation files are stored.
   static $config;
@@ -225,7 +219,7 @@ function render_boost_store_cache($checksum, $data) {
     $record = '<?php $cached_data = \'' . str_replace("'", "\'", $data) . '\';';
     file_unmanaged_save_data($record, $dest, FILE_EXISTS_REPLACE);
   }
-  $render_boost_count_store = $render_boost_count_store + (render_boost_microtime_float() - $now);
+  $_render_boost_devel['store'] = $_render_boost_devel['store'] + (render_boost_microtime_float() - $now);
 }
 
 
@@ -234,7 +228,7 @@ function render_boost_store_cache($checksum, $data) {
  */
 function render_boost_get_cache($checksum) {
 
-  global $render_boost_count_get;
+  global $_render_boost_devel;
   $now = render_boost_microtime_float();
 
   static $checksums;
@@ -268,7 +262,7 @@ function render_boost_get_cache($checksum) {
 
   }
   $checksums[$checksum] = $return;
-  $render_boost_count_get = $render_boost_count_get + (render_boost_microtime_float() - $now);
+  $_render_boost_devel['get'] = $_render_boost_devel['get'] + (render_boost_microtime_float() - $now);
 
   return $return;
 }
