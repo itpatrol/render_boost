@@ -9,8 +9,8 @@
  * Implements hook_boot().
  */
 function render_boost_boot() {
-  $config = config('render_boost.settings');
-  if ($config->get('enable') && $config->get('debug')) {
+  $config = variable_get('render_boost_settings');
+  if ($config['enable'] && $config['debug']) {
     // Init statistics data.
     global $_render_boost_devel;
     $_render_boost_devel['count'] = 0;
@@ -34,17 +34,17 @@ function render_boost_ajax_render_alter() {
  * Implements hook_cron().
  */
 function render_boost_cron() {
-  $config = config('render_boost.settings');
-  if ($config->get('enable') && (0 == $config->get('method'))) {
-    $expire_after = $config->get('expire') ? $config->get('expire') : 3600;
-    $dirpath = $config->get('file_storage_dir') ? $config->get('file_storage_dir') : 'public://render_cache';
+  $config = variable_get('render_boost_settings');
+  if ($config['enable'] && (0 == $config['method'])) {
+    $expire_after = $config['expire'] ? $config['expire'] : 3600;
+    $dirpath = $config['file_storage_dir'] ? $config['file_storage_dir'] : 'public://render_cache';
     if (is_dir($dirpath)) {
     $dir = dir($dirpath);
       while (($entry = $dir->read()) !== FALSE) {
         if(is_file($dirpath . '/' . $entry)){
           $fileinfo = fileatime($dirpath . '/' . $entry);
           if($fileinfo < REQUEST_TIME - $expire_after){
-            backdrop_set_message($dirpath . '/' . $entry . ":" .$fileinfo. ":" . (REQUEST_TIME - $expire_after));
+            unlink($dirpath . '/' . $entry);
           }
         }
       }
@@ -57,10 +57,10 @@ function render_boost_cron() {
  * Implements hook_flush_caches().
  */
 function render_boost_flush_caches() {
-  $config = config('render_boost.settings');
-  if (0 == $config->get('method')) {
+  $config = variable_get('render_boost_settings');
+  if (0 == $config['method']) {
     // Clear files data.
-    $dirpath = $config->get('file_storage_dir') ? $config->get('file_storage_dir') : 'public://render_cache';
+    $dirpath = $config['file_storage_dir'] ? $config['file_storage_dir'] : 'public://render_cache';
     
     if (is_dir($dirpath)) {
     $dir = dir($dirpath);
@@ -78,7 +78,7 @@ function render_boost_flush_caches() {
     render_boost_cachedir_prepare();
   }
 
-  return array('cache_views', 'cache_views_data');
+  return array('cache_render');
 }
 
 /**
@@ -124,102 +124,53 @@ function render_boost_checksum($element) {
 
   $serialize = serialize($element);
 
-  if (is_array($element) || is_object($element)) {
+if (is_array($element)) {
     $need_sanitize = FALSE;
-    $search_for = array('form_token', 'form_build_id', '#build_id');
+    $search_for = array('form_token', 'form_build_id', '#build_id', 'date');
     foreach ($search_for as $str) {
-      if (FALSE !== strpos($serialize, $str)) {
+      if (FALSE !== strpos($serialize, '"'.$str.'"')) {
         $need_sanitize = TRUE;
         break;
       }
     }
     if ($need_sanitize) {
-      $element_copy = render_boost_prepare_elements_for_md5($element);
+      $element_copy = $element;
+      if (is_array($element_copy)) {
+        if (isset($element_copy['form_token'])) {
+          unset($element_copy['form_token']);
+        }
+        if (isset($element_copy['form_build_id'])) {
+          unset($element_copy['form_build_id']);
+        }
+        if (isset($element_copy['#build_id'])) {
+          unset($element_copy['#build_id']);
+        }
+        if (isset($element_copy['date'])) {
+          unset($element_copy['date']);
+        }
+        if (isset($element_copy['#attached'])) {
+          unset($element_copy['#attached']);
+        }
+      }
+
+      array_walk_recursive($element_copy,'render_boost_sanitize_objects');
       $serialize = serialize($element_copy);
+
     }
   }
 
-  $str = md5($serialize);
-  $_render_boost_devel['checksum'] = $_render_boost_devel['checksum'] + (render_boost_microtime_float() - $now);
-  return $str;
+  $checksum = md5($serialize);
+  $_render_cache_devel['checksum'] = $_render_cache_devel['checksum'] + (render_boost_microtime_float() - $now);
+  return $checksum;
 }
 
-/**
- * Internal function to prepare element for checksum
- * by removing dynamic data (form_token, form_build_id) from checksum.
- */
-function render_boost_prepare_elements_for_md5($elements) {
-
-  $return  = '';
-  if (is_array($elements)) {
-    if (isset($elements['form_token'])) {
-      unset($elements['form_token']);
-    }
-    if (isset($elements['form_build_id'])) {
-      unset($elements['form_build_id']);
-    }
-    if (isset($elements['#build_id'])) {
-      unset($elements['#build_id']);
-    }
-
-    $return = array();
-  }
-
-  if (is_object($elements)) {
-    $return = new stdClass();
-    if (isset($elements->form_token)) {
-      unset($elements->form_token);
-    }
-    if (isset($elements->form_build_id)) {
-      unset($elements->form_build_id);
-    }
-    if (isset($elements->{'#build_id'})) {
-      unset($elements->{'#build_id'});
-    }
-
-  }
-
-  foreach ($elements as $key => $element) {
-    if (is_string($element)) {
-      if (0 !== strcmp($element, 'form_token')
-        && 0 !== strcmp($element, 'form_build_id')
-        && 0 !== strcmp($element, '#build_id')
-      ) {
-        if (is_array($return)) {
-          $return[$key] = $element;
-        }
-        if (is_object($return)) {
-          $return->{$key} = $element;
-        }
-      }
-    }
-    elseif (is_array($element)) {
-      if (is_array($return)) {
-        $return[$key] = render_boost_prepare_elements_for_md5($element);
-      }
-      if (is_object($return)) {
-        $return->{$key} = render_boost_prepare_elements_for_md5($element);
-      }
-    }
-    elseif (is_object($element)) {
-      if (is_array($return)) {
-        $return[$key] = render_boost_get_object_values($element);
-      }
-      if (is_object($return)) {
-        $return->{$key} = render_boost_get_object_values($element);
-      }
-    }
-    else {
-      if (is_array($return)) {
-        $return[$key] = $element;
-      }
-      if (is_object($return)) {
-        $return->{$key} = $element;
-      }
+function render_boost_sanitize_objects(&$item, $key){
+  if(is_object($item)){
+    $item = render_boost_get_object_values($item);
+    if(isset($item['created'])){
+      unset($item['created']);
     }
   }
-
-  return $return;
 }
 
 /**
@@ -249,16 +200,16 @@ function render_boost_store_cache($checksum, $data) {
   static $config;
 
   if (empty($config)) {
-    $config = config('render_boost.settings');
+    $config = variable_get('render_boost_settings');
   }
 
-  if ($config->get('method')) {
-    $expire_after = $config->get('expire') ? $config->get('expire') : 3600;
+  if ($config['method']) {
+    $expire_after = $config['expire'] ? $config['expire'] : 3600;
     $expire = REQUEST_TIME + $expire_after ;
     cache('cache_render')->set($checksum, $data, $expire);
   }
   else {
-    $dir = $config->get('file_storage_dir') ? $config->get('file_storage_dir') : 'public://render_cache';
+    $dir = $config['file_storage_dir'] ? $config['file_storage_dir'] : 'public://render_cache';
     $dest = $dir . '/' . $checksum . '.php';
     $record = '<?php $cached_data = \'' . str_replace("'", "\'", $data) . '\';';
     file_unmanaged_save_data($record, $dest, FILE_EXISTS_REPLACE);
@@ -286,16 +237,16 @@ function render_boost_get_cache($checksum) {
   static $config;
 
   if (empty($config)) {
-    $config = config('render_boost.settings');
+    $config = variable_get('render_boost_settings');
   }
 
-  if ($config->get('method')) {
+  if ($config['method']) {
     if ($cache = cache('cache_render')->get($checksum)) {
       $return = $cache->data;
     }
   }
   else {
-    $dir = $config->get('file_storage_dir') ? $config->get('file_storage_dir') : 'public://render_cache';
+    $dir = $config['file_storage_dir'] ? $config['file_storage_dir'] : 'public://render_cache';
     $dest = $dir . '/' . $checksum . '.php';
     if (is_file($dest)) {
       include_once $dest;
@@ -316,11 +267,11 @@ function render_boost_get_cache($checksum) {
  */
 function render_boost_enable_forms_states_attaches($elements) {
   if (!empty($elements['#states'])) {
-    backdrop_process_states($elements);
+    drupal_process_states($elements);
   }
 
   if (!empty($elements['#attached'])) {
-    backdrop_process_attached($elements);
+    drupal_process_attached($elements);
   }
   foreach ($elements as $key => $val) {
     if (is_array($val)) {
@@ -330,9 +281,9 @@ function render_boost_enable_forms_states_attaches($elements) {
 }
 
 /**
- * Main function. Replace backdrop_render function.
+ * Main function. Replace drupal_render function.
  */
-function render_boost_backdrop_render(&$elements) {
+function render_boost_drupal_render(&$elements) {
   $empty_array = array(
     '#printed' => FALSE,
   );
@@ -430,7 +381,7 @@ function render_boost_get_form_element($name, $elements) {
  */
 function render_boost_form_system_performance_settings_alter(&$form, &$form_state, $form_id) {
 
-  $config = config('render_boost.settings');
+  $config = variable_get('render_boost_settings');
 
   $form['render_boost'] = array(
     '#type' => 'fieldset',
@@ -442,7 +393,7 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
   $form['render_boost']['enable'] = array(
     '#type' => 'checkbox',
     '#title' => t("Enable render cache."),
-    '#default_value' => $config->get('enable'),
+    '#default_value' => $config['enable'],
   );
 
   $form['render_boost']['settings'] = array(
@@ -455,12 +406,12 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
     ),
   );
 
-  $period = backdrop_map_assoc(array(1800, 2700, 3600, 10800, 21600, 32400, 43200, 86400), 'format_interval');
+  $period = drupal_map_assoc(array(1800, 2700, 3600, 10800, 21600, 32400, 43200, 86400), 'format_interval');
   $form['render_boost']['settings']['expire'] = array(
     '#type' => 'select',
     '#title' => t("Cache expiration time"),
     '#options' => $period,
-    '#default_value' => $config->get('expire') ? $config->get('expire') : 3600 ,
+    '#default_value' => $config['expire'] ? $config['expire'] : 3600 ,
     '#description' => t('Clean cache after this period.'),
   );
 
@@ -471,7 +422,7 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
       0 => t('File storage'),
       1 => t('Database storage'),
     ),
-    '#default_value' => $config->get('method'),
+    '#default_value' => $config['method'],
   );
 
   $form['render_boost']['settings']['file_storage_description'] = array(
@@ -491,7 +442,7 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
         'select[name="render_boost[settings][method]"]' => array('value' => 0),
       ),
     ),
-    '#default_value' => $config->get('file_storage_dir') ? $config->get('file_storage_dir') : 'public://render_cache',
+    '#default_value' => $config['file_storage_dir'] ? $config['file_storage_dir'] : 'public://render_cache',
     '#description' => t('Directory to store cache files.'),
   );
 
@@ -508,7 +459,7 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
   $form['render_boost']['settings']['debug'] = array(
     '#type' => 'checkbox',
     '#title' => t("Enable debug output."),
-    '#default_value' => $config->get('debug'),
+    '#default_value' => $config['debug'],
   );
 
   $form['#submit'][] = 'render_boost_system_settings_submit';
@@ -518,13 +469,13 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
  * Save Render Cache settings.
  */
 function render_boost_system_settings_submit($form, &$form_state) {
-  $config = config('render_boost.settings');
-  $config->set('enable', $form_state['values']['render_boost']['enable']);
-  $config->set('expire', $form_state['values']['render_boost']['settings']['expire']);
-  $config->set('debug', $form_state['values']['render_boost']['settings']['debug']);
-  $config->set('method', $form_state['values']['render_boost']['settings']['method']);
-  $config->set('file_storage_dir', $form_state['values']['render_boost']['settings']['file_storage_dir']);
-  $config->save();
+  $config = variable_get('render_boost_settings');
+  $config['enable'] = $form_state['values']['render_boost']['enable'];
+  $config['expire'] = $form_state['values']['render_boost']['settings']['expire'];
+  $config['debug'] = $form_state['values']['render_boost']['settings']['debug'];
+  $config['method'] = $form_state['values']['render_boost']['settings']['method'];
+  $config['file_storage_dir'] = $form_state['values']['render_boost']['settings']['file_storage_dir'];
+  variable_set('render_boost_settings', $config);
 
   if (0 == $form_state['values']['render_boost']['settings']['method']) {
     render_boost_cachedir_prepare();
@@ -535,8 +486,8 @@ function render_boost_system_settings_submit($form, &$form_state) {
  * Prepare directory for filecache mode.
  */
 function render_boost_cachedir_prepare() {
-  $config = config('render_boost.settings');
-  $dir = $config->get('file_storage_dir') ? $config->get('file_storage_dir') : 'public://render_cache';
+  $config = variable_get('render_boost_settings');
+  $dir = $config['file_storage_dir'] ? $config['file_storage_dir'] : 'public://render_cache';
 
   file_prepare_directory($dir, FILE_CREATE_DIRECTORY);
   $htaccess_file = $dir . '/.htaccess';
