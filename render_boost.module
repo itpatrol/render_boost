@@ -18,7 +18,7 @@ function render_boost_boot() {
     $_render_boost_devel['get'] = 0;
     $_render_boost_devel['store'] = 0;
 
-    backdrop_register_shutdown_function('render_boost_shutdown');
+    drupal_register_shutdown_function('render_boost_shutdown');
   }
 }
 
@@ -160,7 +160,7 @@ if (is_array($element)) {
   }
 
   $checksum = md5($serialize);
-  $_render_cache_devel['checksum'] = $_render_cache_devel['checksum'] + (render_boost_microtime_float() - $now);
+  $_render_boost_devel['checksum'] = $_render_boost_devel['checksum'] + (render_boost_microtime_float() - $now);
   return $checksum;
 }
 
@@ -251,7 +251,7 @@ function render_boost_get_cache($checksum) {
     if (is_file($dest)) {
       include_once $dest;
       if (isset($cached_data)) {
-        $return = $cached_data;
+        $return = '<cached id="' . $checksum. '">' . $cached_data . '</cached>';
       }
     }
 
@@ -259,7 +259,7 @@ function render_boost_get_cache($checksum) {
   $checksums[$checksum] = $return;
   $_render_boost_devel['get'] = $_render_boost_devel['get'] + (render_boost_microtime_float() - $now);
 
-  return $return;
+  return $return ;
 }
 
 /**
@@ -298,7 +298,7 @@ function render_boost_drupal_render(&$elements) {
   }
 
   if (isset($elements['#type']) && $elements['#type'] == 'scripts') {
-    // No cache for window.Backdrop = ....
+    // No cache for window.Drupal = ....
     return render_boost_original_render($elements);
   }
 
@@ -517,7 +517,7 @@ function render_boost_render_wrapper(&$elements) {
 }
 
 /**
- * Original backdrop_render function except cache functions.
+ * Original drupal_render function except cache functions.
  */
 function render_boost_original_render(&$elements) {
   // Early-return nothing if user does not have access.
@@ -570,7 +570,7 @@ function render_boost_original_render(&$elements) {
     $elements['#children'] = theme($elements['#theme'], $elements);
   }
   // If #theme was not set and the element has children, render them now.
-  // This is the same process as backdrop_render_children() but is inlined
+  // This is the same process as drupal_render_children() but is inlined
   // for speed.
   if ($elements['#children'] == '') {
     foreach ($children as $key) {
@@ -597,13 +597,13 @@ function render_boost_original_render(&$elements) {
 
   // Add any JavaScript state information associated with the element.
   if (!empty($elements['#states'])) {
-    backdrop_process_states($elements);
+    drupal_process_states($elements);
   }
 
   // Add additional libraries, CSS, JavaScript an other custom
   // attached data associated with this element.
   if (!empty($elements['#attached'])) {
-    backdrop_process_attached($elements);
+    drupal_process_attached($elements);
   }
 
   $prefix = isset($elements['#prefix']) ? $elements['#prefix'] : '';
