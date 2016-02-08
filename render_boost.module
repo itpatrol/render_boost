@@ -31,53 +31,10 @@ function render_boost_ajax_render_alter() {
 
 
 /**
- * Implements hook_cron().
- */
-function render_boost_cron() {
-  $config = variable_get('render_boost_settings');
-  if ($config['enable'] && (0 == $config['method'])) {
-    $expire_after = $config['expire'] ? $config['expire'] : 3600;
-    $dirpath = $config['file_storage_dir'] ? $config['file_storage_dir'] : 'public://render_cache';
-    if (is_dir($dirpath)) {
-    $dir = dir($dirpath);
-      while (($entry = $dir->read()) !== FALSE) {
-        if(is_file($dirpath . '/' . $entry)){
-          $fileinfo = fileatime($dirpath . '/' . $entry);
-          if($fileinfo < REQUEST_TIME - $expire_after){
-            unlink($dirpath . '/' . $entry);
-          }
-        }
-      }
-      $dir->close();
-    }
-  }
-}
-
-/**
  * Implements hook_flush_caches().
  */
 function render_boost_flush_caches() {
   $config = variable_get('render_boost_settings');
-  if (0 == $config['method']) {
-    // Clear files data.
-    $dirpath = $config['file_storage_dir'] ? $config['file_storage_dir'] : 'public://render_cache';
-    
-    if (is_dir($dirpath)) {
-    $dir = dir($dirpath);
-      while (($entry = $dir->read()) !== FALSE) {
-        if(is_file($dirpath . '/' . $entry)){
-          $fileinfo = pathinfo($dirpath . '/' . $entry);
-          if($fileinfo['extension'] == 'php'){
-            unlink($dirpath . '/' . $entry);
-          }
-        }
-      }
-      $dir->close();
-    }
-  
-    render_boost_cachedir_prepare();
-  }
-
   return array('cache_render');
 }
 
@@ -198,23 +155,11 @@ function render_boost_store_cache($checksum, $data) {
   global $_render_boost_devel;
   $now = render_boost_microtime_float();
   // Construct the filepath where JS translation files are stored.
-  static $config;
+  $config = variable_get('render_boost_settings');
 
-  if (empty($config)) {
-    $config = variable_get('render_boost_settings');
-  }
-
-  if ($config['method']) {
-    $expire_after = $config['expire'] ? $config['expire'] : 3600;
-    $expire = REQUEST_TIME + $expire_after ;
-    cache_set($checksum, $data, 'cache_render', $expire);
-  }
-  else {
-    $dir = $config['file_storage_dir'] ? $config['file_storage_dir'] : 'public://render_cache';
-    $dest = $dir . '/' . $checksum . '.php';
-    $record = '<?php $cached_data = \'' . str_replace("'", "\'", $data) . '\';';
-    file_unmanaged_save_data($record, $dest, FILE_EXISTS_REPLACE);
-  }
+  $expire_after = $config['expire'] ? $config['expire'] : 3600;
+  $expire = REQUEST_TIME + $expire_after ;
+  cache_set($checksum, $data, 'cache_render', $expire);
   $_render_boost_devel['store'] = $_render_boost_devel['store'] + (render_boost_microtime_float() - $now);
 }
 
@@ -246,44 +191,27 @@ function render_boost_get_cache($checksum) {
 
   $return = FALSE;
 
-  static $config;
+  $config = variable_get('render_boost_settings');
 
-  if (empty($config)) {
-    $config = variable_get('render_boost_settings');
-  }
+  if ($cache = cache_get($checksum, 'cache_render')) {
 
-  if ($config['method']) {
-    if ($cache = cache_get($checksum, 'cache_render')) {
-
-      if(isset($cache->data['js'])){
-        foreach($cache->data['js'] as $key => $val){
-          drupal_add_js($key, $val['type']);
-        }
-      }
-      if(isset($cache->data['css'])){
-        foreach($cache->data['css'] as $key => $val){
-          drupal_add_css($key, $val);
-        }
-      }
-      if(isset($cache->data['settings'])){
-        foreach($cache->data['settings'] as $key => $val){
-          drupal_add_js($val, 'setting');
-        }
-      }
-      
-      $return = '<!-- cached:' . $checksum. ' -->' . $cache->data['output'] . '<!-- /cached:' . $checksum. ' -->';
-    }
-  }
-  else {
-    $dir = $config['file_storage_dir'] ? $config['file_storage_dir'] : 'public://render_cache';
-    $dest = $dir . '/' . $checksum . '.php';
-    if (is_file($dest)) {
-      include_once $dest;
-      if (isset($cached_data)) {
-        $return = '<cached id="' . $checksum. '">' . $cached_data . '</cached>';
+    if(isset($cache->data['js'])){
+      foreach($cache->data['js'] as $key => $val){
+        drupal_add_js($key, $val['type']);
       }
     }
-
+    if(isset($cache->data['css'])){
+      foreach($cache->data['css'] as $key => $val){
+        drupal_add_css($key, $val);
+      }
+    }
+    if(isset($cache->data['settings'])){
+      foreach($cache->data['settings'] as $key => $val){
+        drupal_add_js($val, 'setting');
+      }
+    }
+    
+    $return = '<!-- cached:' . $checksum. ' -->' . $cache->data['output'] . '<!-- /cached:' . $checksum. ' -->';
   }
   $checksums[$checksum] = $return;
   render_boost_store_checksums($checksum);
@@ -480,47 +408,6 @@ function render_boost_form_system_performance_settings_alter(&$form, &$form_stat
     '#description' => t('Clean cache after this period.'),
   );
 
-  $form['render_boost']['settings']['method'] = array(
-    '#type' => 'select',
-    '#title' => t("Cache method"),
-    '#options' => array(
-      0 => t('File storage'),
-      1 => t('Database storage'),
-    ),
-    '#default_value' => $config['method'],
-  );
-
-  $form['render_boost']['settings']['file_storage_description'] = array(
-    '#type' => 'item',
-    '#states' => array(
-      'visible' => array(
-        'select[name="render_boost[settings][method]"]' => array('value' => 0),
-      ),
-    ),
-    '#description' => t('Please make sure that you properly configured cron.'),
-  );
-
-  $form['render_boost']['settings']['file_storage_dir'] = array(
-    '#type' => 'textfield',
-    '#states' => array(
-      'visible' => array(
-        'select[name="render_boost[settings][method]"]' => array('value' => 0),
-      ),
-    ),
-    '#default_value' => $config['file_storage_dir'] ? $config['file_storage_dir'] : 'public://render_cache',
-    '#description' => t('Directory to store cache files.'),
-  );
-
-  $form['render_boost']['settings']['database_storage_description'] = array(
-    '#type' => 'item',
-    '#states' => array(
-      'visible' => array(
-        'select[name="render_boost[settings][method]"]' => array('value' => 1),
-      ),
-    ),
-    '#description' => t('Cached results cleaned after 1 hour by cache clean process.'),
-  );
-
   $form['render_boost']['settings']['debug'] = array(
     '#type' => 'checkbox',
     '#title' => t("Enable debug output."),
@@ -538,32 +425,10 @@ function render_boost_system_settings_submit($form, &$form_state) {
   $config['enable'] = $form_state['values']['render_boost']['enable'];
   $config['expire'] = $form_state['values']['render_boost']['settings']['expire'];
   $config['debug'] = $form_state['values']['render_boost']['settings']['debug'];
-  $config['method'] = $form_state['values']['render_boost']['settings']['method'];
-  $config['file_storage_dir'] = $form_state['values']['render_boost']['settings']['file_storage_dir'];
 
   variable_set('render_boost_settings', $config);
 
-  if (0 == $form_state['values']['render_boost']['settings']['method']) {
-    render_boost_cachedir_prepare();
-  }
 }
-
-/**
- * Prepare directory for filecache mode.
- */
-function render_boost_cachedir_prepare() {
-  $config = variable_get('render_boost_settings');
-  $dir = $config['file_storage_dir'] ? $config['file_storage_dir'] : 'public://render_cache';
-
-  file_prepare_directory($dir, FILE_CREATE_DIRECTORY);
-  $htaccess_file = $dir . '/.htaccess';
-
-  if (!is_file($htaccess_file)) {
-    $htaccess_data = "order deny,allow\ndeny from all";
-    file_unmanaged_save_data($htaccess_data, $htaccess_file, FILE_EXISTS_REPLACE);
-  }
-}
-
 
 /**
  * Original drupal_render function except cache functions.
