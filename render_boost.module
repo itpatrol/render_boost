@@ -123,8 +123,8 @@ function render_boost_checksum($element) {
   $_render_boost_devel['count']++;
 
   $serialize = serialize($element);
-
-if (is_array($element)) {
+/*
+  if (is_array($element)) {
     $need_sanitize = FALSE;
     $search_for = array('form_token', 'form_build_id', '#build_id', 'date');
     foreach ($search_for as $str) {
@@ -154,14 +154,51 @@ if (is_array($element)) {
       }
 
       array_walk_recursive($element_copy,'render_boost_sanitize_objects');
+//      render_boost_sanitize_form($element_copy);
       $serialize = serialize($element_copy);
 
     }
-  }
+  }*/
 
   $checksum = md5($serialize);
   $_render_boost_devel['checksum'] = $_render_boost_devel['checksum'] + (render_boost_microtime_float() - $now);
   return $checksum;
+}
+
+function render_boost_sanitize_form(&$element){
+  static $deep;
+  
+  if(!$deep){
+    $deep = 1;
+  }else{
+    $deep ++;
+  }
+  
+  if($deep > 3){
+    return;
+  }
+  
+  if(is_array($element)){
+    if (isset($element['form_token'])) {
+      unset($element['form_token']);
+    }
+    if (isset($element['form_build_id'])) {
+      unset($element['form_build_id']);
+    }
+    if (isset($element['#build_id'])) {
+      unset($element['#build_id']);
+    }
+    if (isset($element['date'])) {
+      unset($element['date']);
+    }
+    if (isset($element['#attached'])) {
+      unset($element['#attached']);
+    }
+    foreach($element as $key => $value){
+      render_boost_sanitize_form($value);
+      $element[$key] = $value;
+    }
+  }
 }
 
 function render_boost_sanitize_objects(&$item, $key){
@@ -206,7 +243,7 @@ function render_boost_store_cache($checksum, $data) {
   if ($config['method']) {
     $expire_after = $config['expire'] ? $config['expire'] : 3600;
     $expire = REQUEST_TIME + $expire_after ;
-    cache('cache_render')->set($checksum, $data, $expire);
+    cache_set($checksum, $data, 'cache_render', $expire);
   }
   else {
     $dir = $config['file_storage_dir'] ? $config['file_storage_dir'] : 'public://render_cache';
@@ -217,7 +254,18 @@ function render_boost_store_cache($checksum, $data) {
   $_render_boost_devel['store'] = $_render_boost_devel['store'] + (render_boost_microtime_float() - $now);
 }
 
-
+function render_boost_store_checksums($checksum = NULL){
+  static $checksums;
+  
+  if(!$checksums){
+    $checksums = array();
+  }
+  
+  if($checksum){
+    $checksums[] = $checksum;
+  }
+  return $checksums;
+}
 /**
  * Get cache by checksum.
  */
@@ -226,10 +274,14 @@ function render_boost_get_cache($checksum) {
   global $_render_boost_devel;
   $now = render_boost_microtime_float();
 
-  static $checksums;
+  $checksums = &drupal_static('render_boost_get_cache');
 
+//  drupal_set_message('check <pre>' . $checksum . 'count' . count($checksums). '</pre>');
   if (isset($checksums[$checksum])) {
+   // drupal_set_message('cached <pre>' . print_r($checksum,true). '</pre>');
     return $checksums[$checksum];
+  }else{
+    drupal_set_message('not cached <pre>' . $checksum . 'count' . count($checksums)  . microtime() . '</pre>');
   }
 
   $return = FALSE;
@@ -241,8 +293,35 @@ function render_boost_get_cache($checksum) {
   }
 
   if ($config['method']) {
-    if ($cache = cache('cache_render')->get($checksum)) {
-      $return = $cache->data;
+    if ($cache = cache_get($checksum, 'cache_render')) {
+//      drupal_set_message('Call ' . $checksum . ' <pre>' . htmlentities( print_r($cache->data,true) ). '</pre>');
+
+      if(isset($cache->data['js'])){
+        foreach($cache->data['js'] as $key => $val){
+          drupal_add_js($key, $val['type']);
+        }
+      }
+      if(isset($cache->data['css'])){
+        foreach($cache->data['css'] as $key => $val){
+          drupal_add_css($key, $val);
+        }
+      }
+      if(isset($cache->data['settings'])){
+        foreach($cache->data['settings'] as $key => $val){
+          drupal_add_js($val, 'setting');
+        }
+      }
+/*      if(isset($cache->data['checksums']) && !empty($cache->data['checksums'])){
+        $cache->data['checksums'];
+        $subcaches = cache_get_multiple($cache->data['checksums'], 'cache_render');
+//        drupal_set_message('<pre>'. htmlentities(print_r($subcaches,true)) . '</pre>');
+        foreach($subcaches as $subsum => $value){
+          $checksums[$subsum] = $value;
+        }
+
+      }*/
+      
+      $return = '<!-- cached:' . $checksum. ' -->' . $cache->data['output'] . '<!-- /cached:' . $checksum. ' -->';
     }
   }
   else {
@@ -257,6 +336,7 @@ function render_boost_get_cache($checksum) {
 
   }
   $checksums[$checksum] = $return;
+  render_boost_store_checksums($checksum);
   $_render_boost_devel['get'] = $_render_boost_devel['get'] + (render_boost_microtime_float() - $now);
 
   return $return ;
@@ -266,12 +346,13 @@ function render_boost_get_cache($checksum) {
  * Process form states and attachments fo cached data.
  */
 function render_boost_enable_forms_states_attaches($elements) {
+//  drupal_set_message('<pre>' . print_r($elements,true). '</pre>');
   if (!empty($elements['#states'])) {
-    drupal_process_states($elements);
+//    drupal_process_states($elements);
   }
 
   if (!empty($elements['#attached'])) {
-    drupal_process_attached($elements);
+//    drupal_process_attached($elements);
   }
   foreach ($elements as $key => $val) {
     if (is_array($val)) {
@@ -284,6 +365,30 @@ function render_boost_enable_forms_states_attaches($elements) {
  * Main function. Replace drupal_render function.
  */
 function render_boost_drupal_render(&$elements) {
+ 
+  
+  $output = render_boost_render($elements);
+  preg_match_all('/<!-- render_boost_form:(.*?):(.*?) --\>/', $output, $matches);
+  
+  if (!empty($matches[0])) {
+    $form_storage = render_boost_form_storage();
+    
+    foreach ($matches[2] as $key => $form_serial_number) {
+      $rendered_element = $form_storage[$form_serial_number]['render'];
+      $output = str_replace($matches[0][$key], $rendered_element, $output);
+    }
+  }
+  
+  return $output;
+}
+
+/**
+ * Multy time used render.
+ */
+function render_boost_render(&$elements) {
+
+//  drupal_set_message('<pre>' . print_r($elements,true). '</pre>');
+  
   $empty_array = array(
     '#printed' => FALSE,
   );
@@ -291,14 +396,24 @@ function render_boost_drupal_render(&$elements) {
   if ($elements === $empty_array) {
     return "";
   }
-
+  
   if (isset($elements['#markup'])) {
+    // No cache for markup.
+    return render_boost_original_render($elements);
+  }
+  
+  if (isset($elements['#ajax'])) {
     // No cache for markup.
     return render_boost_original_render($elements);
   }
 
   if (isset($elements['#type']) && $elements['#type'] == 'scripts') {
     // No cache for window.Drupal = ....
+    return render_boost_original_render($elements);
+  }
+
+  if (isset($elements['#name']) && $elements['#name'] == 'form_build_id') {
+    // No cache for form_build_id
     return render_boost_original_render($elements);
   }
 
@@ -313,25 +428,63 @@ function render_boost_drupal_render(&$elements) {
   }
 
   if ($check_sum = render_boost_checksum($elements)) {
+//    drupal_set_message('checksum <pre>' . $check_sum. ' <pre>' . htmlentities( print_r($elements,true) ). '</pre>');
 
-    if (!$output = render_boost_get_cache($check_sum)) {
-
-      $output = render_boost_render_wrapper($elements);
-
+    $output = render_boost_get_cache($check_sum);
+    if (FALSE === $output) {
+//      drupal_set_message('checksum <pre>' . $check_sum. ' <pre>' . htmlentities( print_r($elements,true) ). '</pre>');
+      
+      $scripts_before = drupal_add_js();
+      $css_before = drupal_add_css();
+      $output = render_boost_original_render($elements);
+      $scripts_after = drupal_add_js();
+      $css_after = drupal_add_css();
       if (!empty($output)) {
-        render_boost_store_cache($check_sum, $output);
+        $data = array();
+        $data['output'] = $output;
+        $scripts_keys_before = array_keys($scripts_before);
+        $scripts_keys_after = array_keys($scripts_after);
+
+        if($diff = array_diff($scripts_keys_after,$scripts_keys_before)){
+          foreach($diff as $key){
+            $data['js'][$key] = $scripts_after[$key];
+          }
+        }
+        
+        $data_keys_before = array_keys($scripts_before['settings']['data']);
+        $data_keys_after = array_keys($scripts_after['settings']['data']);
+
+        if($diff = array_diff($data_keys_after,$data_keys_before)){
+          foreach($diff as $key){
+            $data['settings'][$key] = $scripts_after['settings']['data'][$key];
+          }
+        }
+        
+        $css_keys_before = array_keys($css_before);
+        $css_keys_after = array_keys($css_after);
+        
+        if($diff = array_diff($css_keys_after,$css_keys_before)){
+          foreach($diff as $key){
+            $data['css'][$key] = $css_after[$key];
+          }
+        }
+        render_boost_store_cache($check_sum, $data);
+        
+//        drupal_set_message('store ' . $check_sum . '  <pre>b'. htmlentities(print_r($data,true)) . '</pre>');
+      } else{
+       // drupal_set_message(' not store ' . $check_sum . '  <pre>b'. print_r($elements,true) . '</pre>');
       }
     }
     else {
-      render_boost_enable_forms_states_attaches($elements);
+     //we have it 
+    
+//      drupal_set_message(' we have it ' . $check_sum . '  <pre>b'. print_r($elements,true) . htmlentities($output) . '</pre>');
+      //render_boost_enable_forms_states_attaches($elements);
     }
   }
   else {
-    $output = render_boost_render_wrapper($elements);
+    $output = render_boost_original_render($elements);
   }
-
-  render_boost_replace_dynamic_content($elements, $output);
-
   return $output;
 }
 
@@ -339,6 +492,8 @@ function render_boost_drupal_render(&$elements) {
  * Replace place holders (form_token, form_build_id) with actual data.
  */
 function render_boost_replace_dynamic_content($elements, &$output) {
+  
+  drupal_set_message('TEST <pre>'. print_r($elements,true) . '</pre>');
 
   preg_match_all('/<!-- REPLACE: (.*?) --\>/', $output, $matches);
 
@@ -382,7 +537,6 @@ function render_boost_get_form_element($name, $elements) {
 function render_boost_form_system_performance_settings_alter(&$form, &$form_state, $form_id) {
 
   $config = variable_get('render_boost_settings');
-
   $form['render_boost'] = array(
     '#type' => 'fieldset',
     '#title' => t('Render boost'),
@@ -475,6 +629,7 @@ function render_boost_system_settings_submit($form, &$form_state) {
   $config['debug'] = $form_state['values']['render_boost']['settings']['debug'];
   $config['method'] = $form_state['values']['render_boost']['settings']['method'];
   $config['file_storage_dir'] = $form_state['values']['render_boost']['settings']['file_storage_dir'];
+
   variable_set('render_boost_settings', $config);
 
   if (0 == $form_state['values']['render_boost']['settings']['method']) {
@@ -498,23 +653,6 @@ function render_boost_cachedir_prepare() {
   }
 }
 
-/**
- * Render wrapper. Replace form_token and form_build_id with Placeholder.
- */
-function render_boost_render_wrapper(&$elements) {
-
-  $dynamic_content = FALSE;
-  if (isset($elements['#name']) && in_array($elements['#name'], array('form_token', 'form_build_id'))) {
-    $dynamic_content = TRUE;
-  }
-
-  $output = render_boost_original_render($elements);
-
-  if ($dynamic_content) {
-    $output = '<!-- REPLACE: ' . $elements['#name'] . ' -->';
-  }
-  return $output;
-}
 
 /**
  * Original drupal_render function except cache functions.
@@ -574,7 +712,7 @@ function render_boost_original_render(&$elements) {
   // for speed.
   if ($elements['#children'] == '') {
     foreach ($children as $key) {
-      $elements['#children'] .= render_boost_render_wrapper($elements[$key]);
+      $elements['#children'] .= render_boost_original_render($elements[$key]);
     }
   }
 
@@ -613,4 +751,77 @@ function render_boost_original_render(&$elements) {
   $elements['#printed'] = TRUE;
 
   return $output;
+}
+
+function render_boost_form_storage($form_id = NULL, $form_render = NULL){
+  static $form_storage;
+  if($form_render){
+      //drupal_set_message('form_storage ' . $form_id);
+    if ($cache = cache_get($form_id, 'cache_render')) {
+      $subcaches = cache_get_multiple($cache->data, 'cache_render');
+//      drupal_set_message('<pre>' . print_r($cache->data,true). '</pre>' . microtime());
+
+      $checksums = &drupal_static('render_boost_get_cache');
+      
+      $tmplist = array();
+      foreach($cache->data as $form_chksum){
+        $tmplist[$form_chksum] = $form_chksum;
+      }
+      foreach($subcaches as $checksum => $subcache){
+        unset($tmplist[$checksum]);
+        
+        if(isset($checksums[$checksum])){
+          //drupal_set_message('Already cached <pre>' . print_r($checksums[$checksum], true). '</pre>');
+          continue;
+        }
+        $checksums[$checksum] = $subcache->data['output'];
+        if(isset($subcache->data['js'])){
+          foreach($subcache->data['js'] as $key => $val){
+            drupal_add_js($key, $val['type']);
+          }
+        }
+        if(isset($subcache->data['css'])){
+          foreach($subcache->data['css'] as $key => $val){
+            drupal_add_css($key, $val);
+          }
+        }
+        if(isset($subcache->data['settings'])){
+          foreach($subcache->data['settings'] as $key => $val){
+            drupal_add_js($val, 'setting');
+          }
+        }
+      }
+      
+      foreach($tmplist as $form_chksum){
+        $checksums[$form_chksum] = '';
+      }
+      $form_storage[] = array(
+        'elements' => $form_render,
+        'render' => render_boost_original_render($form_render)
+      );
+    }else{
+    
+      $before = render_boost_store_checksums();
+      $form_storage[] = array(
+        'elements' => $form_render,
+        'render' => render_boost_original_render($form_render)
+      );
+      $after = render_boost_store_checksums();
+      
+      if($diff = array_diff($after,$before)){
+        $config = variable_get('render_boost_settings');
+        $expire_after = $config['expire'] ? $config['expire'] : 3600;
+        $expire = REQUEST_TIME + $expire_after ;
+        cache_set($form_id, $diff, 'cache_render', $expire);
+      }
+    }
+
+//    $checksums = &drupal_static('render_boost_get_cache');
+//    drupal_set_message('<pre>' . print_r($checksums,true). '</pre>');
+
+    
+    return count($form_storage) - 1;
+  }else{
+    return $form_storage;
+  }
 }
