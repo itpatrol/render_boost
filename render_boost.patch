@@ -4,24 +4,26 @@ diff -ruN --exclude=sites -x info.php -x .htaccess -x .gitignore ./includes/comm
 @@ -5846,6 +5846,13 @@
      $page['content']['system_main'] = drupal_set_page_content();
    }
- 
-+  if(module_exists('render_boost')){
-+    $config = variable_get('render_boost_settings');
-+    if($config['enable']){
+
++  if (function_exists('render_boost_settings')) {
++    $config = render_boost_settings();
++
++    if ($config['enable']) {
 +      return render_boost_original_render($page);
 +    }
 +  }
 +
    return drupal_render($page);
  }
- 
+
 @@ -5937,6 +5944,13 @@
      return '';
    }
- 
-+  if(module_exists('render_boost')){
-+    $config = variable_get('render_boost_settings');
-+    if($config['enable']){
+
++  if (function_exists('render_boost_settings')) {
++    $config = render_boost_settings();
++
++    if ($config['enable']) {
 +      return render_boost_drupal_render($elements);
 +    }
 +  }
@@ -35,19 +37,21 @@ diff -ruN --exclude=sites -x info.php -x .htaccess -x .gitignore ./includes/form
 @@ -127,7 +127,17 @@
    array_shift($args);
    $form_state['build_info']['args'] = $args;
- 
+
 -  return drupal_build_form($form_id, $form_state);
 +  $form = drupal_build_form($form_id, $form_state);
-+  if(module_exists('render_boost')){
-+    $config = variable_get('render_boost_settings');
-+    if($config['enable']){
++
++  if (function_exists('render_boost_settings')) {
++    $config = render_boost_settings();
++
++    if ($config['enable']) {
 +      $form_unique_id = render_boost_form_storage($form_id, $form);
-+      return array(
-+        '#markup' => '<!-- render_boost_form:' . $form_id . ':' . $form_unique_id . ' -->',
-+      );
++
++      return array('#markup' => "<!-- render_boost_form:$form_id:$form_unique_id -->");
 +    }
 +  }
++
 +  return $form;
  }
- 
+
  /**
