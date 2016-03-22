@@ -9,15 +9,13 @@
  */
 function render_boost_boot() {
   $config = render_boost_settings();
-
+  global $_render_boost_devel;
+  $_render_boost_devel['count'] = 0;
+  $_render_boost_devel['checksum'] = 0;
+  $_render_boost_devel['get'] = 0;
+  $_render_boost_devel['store'] = 0;
   if ($config['enable'] && $config['debug']) {
     // Init statistics data.
-    global $_render_boost_devel;
-    $_render_boost_devel['count'] = 0;
-    $_render_boost_devel['checksum'] = 0;
-    $_render_boost_devel['get'] = 0;
-    $_render_boost_devel['store'] = 0;
-
     drupal_register_shutdown_function('render_boost_shutdown');
   }
 }
@@ -80,7 +78,7 @@ function render_boost_checksum($element) {
 
   $serialize = serialize($element);
   $checksum = md5($serialize);
-  $_render_boost_devel['checksum'] = $_render_boost_devel['checksum'] + (render_boost_microtime_float() - $now);
+  $_render_boost_devel['checksum'] += (render_boost_microtime_float() - $now);
 
   return $checksum;
 }
@@ -136,7 +134,7 @@ function render_boost_get_cache($checksum) {
   $checksums[$checksum] = $return;
 
   render_boost_store_checksums($checksum);
-  $_render_boost_devel['get'] = $_render_boost_devel['get'] + (render_boost_microtime_float() - $now);
+  $_render_boost_devel['get'] += (render_boost_microtime_float() - $now);
 
   return $return;
 }
